@@ -1,0 +1,168 @@
+@startuml TomTroc
+
+package "Entity" {
+  class User {
+    -int id
+    -string pseudo
+    -string email
+    -string password
+    -string avatar
+    -string bio
+    -DateTime createdAt
+    +getId(): int
+    +getPseudo(): string
+    +setPseudo(string): void
+    +getEmail(): string
+    +setEmail(string): void
+    +getPassword(): string
+    +setPassword(string): void
+    +getAvatar(): string
+    +setAvatar(string): void
+    +getBio(): string
+    +setBio(string): void
+    +getCreatedAt(): DateTime
+  }
+
+  class Book {
+    -int id
+    -int userId
+    -string title
+    -string author
+    -string description
+    -string image
+    -string status
+    -DateTime createdAt
+    +getId(): int
+    +getUserId(): int
+    +setUserId(int): void
+    +getTitle(): string
+    +setTitle(string): void
+    +getAuthor(): string
+    +setAuthor(string): void
+    +getDescription(): string
+    +setDescription(string): void
+    +getImage(): string
+    +setImage(string): void
+    +getStatus(): string
+    +setStatus(string): void
+    +getCreatedAt(): DateTime
+  }
+
+  class Message {
+    -int id
+    -int senderId
+    -int receiverId
+    -string content
+    -bool isRead
+    -DateTime createdAt
+    +getId(): int
+    +getSenderId(): int
+    +getReceiverId(): int
+    +getContent(): string
+    +setContent(string): void
+    +isRead(): bool
+    +setIsRead(bool): void
+    +getCreatedAt(): DateTime
+  }
+}
+
+package "Manager" {
+  class UserManager {
+    -PDO pdo
+    +findById(int id): User
+    +findByEmail(string email): User
+    +create(User user): int
+    +update(User user): void
+  }
+
+  class BookManager {
+    -PDO pdo
+    +findAll(): Book[]
+    +findAvailable(string keyword): Book[]
+    +findById(int id): Book
+    +findByUserId(int userId): Book[]
+    +create(Book book): int
+    +update(Book book): void
+    +delete(int id): void
+  }
+
+  class MessageManager {
+    -PDO pdo
+    +findConversations(int userId): array
+    +findConversation(int userId1, int userId2): Message[]
+    +create(Message message): int
+    +markAsRead(int id): void
+  }
+}
+
+package "Core" {
+  class Database {
+    -{static} PDO instance
+    +{static} getInstance(): PDO
+  }
+
+  class Router {
+    -array routes
+    +add(string method, string path, callable action): void
+    +dispatch(string method, string uri): void
+  }
+}
+
+package "Controllers" {
+  class AuthController {
+    +register(): void
+    +login(): void
+    +logout(): void
+  }
+
+  class UserController {
+    +show(int id): void
+    +edit(): void
+  }
+
+  class BookController {
+    +list(): void
+    +detail(int id): void
+    +add(): void
+    +edit(int id): void
+    +delete(int id): void
+  }
+
+  class MessageController {
+    +inbox(): void
+    +conversation(int userId): void
+    +send(): void
+  }
+}
+
+' Les Managers savent construire/retourner des Entity
+UserManager ..> User : crée / retourne
+BookManager ..> Book : crée / retourne
+MessageManager ..> Message : crée / retourne
+
+' Les Managers utilisent la connexion partagée
+UserManager --> Database : utilise
+BookManager --> Database : utilise
+MessageManager --> Database : utilise
+
+' Les Controllers utilisent les Managers dont ils ont besoin
+AuthController --> UserManager : utilise
+UserController --> UserManager : utilise
+BookController --> BookManager : utilise
+BookController --> UserManager : utilise (lien profil propriétaire)
+MessageController --> MessageManager : utilise
+MessageController --> UserManager : utilise
+
+' Le routeur distribue vers les Controllers
+Router ..> AuthController : dispatch
+Router ..> UserController : dispatch
+Router ..> BookController : dispatch
+Router ..> MessageController : dispatch
+
+' Relations logiques issues des clés étrangères en BDD
+' (Book/Message ne stockent qu'un userId, pas un objet User - lien conceptuel)
+Book "*" --> "1" User : appartient à (userId)
+Message "*" --> "1" User : envoyé par (senderId)
+Message "*" --> "1" User : reçu par (receiverId)
+
+@enduml

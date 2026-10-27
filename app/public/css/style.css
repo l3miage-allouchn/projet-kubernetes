@@ -1,0 +1,1257 @@
+/* =========================================================
+   1. Variables : les couleurs de la maquette
+   ========================================================= */
+:root {
+    /* couleurs de la maquette légèrement foncées pour un contraste suffisant (WCAG AA, testé avec WAVE) */
+    --color-green: #007E4B;
+    --color-green-dark: #006D41;
+    --color-text: #292929;
+    --color-title: #000000;
+    --color-grey: #6E6E6E;
+    --color-border: #D9D9D9;
+    --color-beige: #F5F3EF;
+    --color-background: #FAF9F7;
+    --color-white: #FFFFFF;
+    --color-input: #EDF2F6;
+    --color-line: #F0F0F0;
+    --color-available: #348363;
+    --color-unavailable: #BC5757;
+    --color-danger: #CB2D2D;
+
+    --font-text: 'Inter', Arial, sans-serif;
+    --font-title: 'Playfair Display', Georgia, serif;
+
+    --content-width: 1140px;
+}
+
+/* =========================================================
+   2. Base
+   ========================================================= */
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background-color: var(--color-background);
+    color: var(--color-text);
+    font-family: var(--font-text);
+    font-size: 16px;
+    line-height: 1.4;
+}
+
+main {
+    flex: 1;
+}
+
+h1,
+h2,
+h3 {
+    margin: 0;
+    color: var(--color-title);
+    font-family: var(--font-title);
+    font-weight: 400;
+}
+
+a {
+    color: inherit;
+}
+
+img {
+    display: block;
+    max-width: 100%;
+}
+
+/* =========================================================
+   3. Header
+   ========================================================= */
+.site-header {
+    background-color: var(--color-beige);
+}
+
+.site-header__inner {
+    display: flex;
+    align-items: center;
+    max-width: var(--content-width);
+    height: 80px;
+    margin: 0 auto;
+}
+
+.site-header__logo {
+    margin-right: 78px;
+}
+
+.site-header__nav {
+    display: flex;
+    align-items: center;
+    gap: 44px;
+}
+
+/* la partie "espace membre" est poussée à droite, avec le trait séparateur */
+.site-header__nav--account {
+    gap: 60px;
+    margin-left: auto;
+    padding-left: 60px;
+    border-left: 1px solid var(--color-border);
+}
+
+.site-header__link {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 14px;
+    text-decoration: none;
+}
+
+.site-header__link:hover,
+.site-header__link--active {
+    font-weight: 600;
+}
+
+/* Pastille du nombre de messages non lus */
+.unread-badge {
+    display: inline-block;
+    min-width: 14px;
+    height: 14px;
+    padding: 0 4px;
+    border-radius: 7px;
+    background-color: #000000;
+    color: var(--color-white);
+    font-size: 8px;
+    font-weight: 600;
+    line-height: 14px;
+    text-align: center;
+}
+
+/* =========================================================
+   4. Footer
+   ========================================================= */
+.site-footer {
+    background-color: var(--color-white);
+}
+
+.site-footer__nav {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 40px;
+    height: 60px;
+    padding: 0 38px;
+    font-size: 12px;
+}
+
+.site-footer__link {
+    text-decoration: none;
+}
+
+.site-footer__link:hover {
+    text-decoration: underline;
+}
+
+/* =========================================================
+   5. Composants communs : boutons, formulaires
+   ========================================================= */
+.button {
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    padding: 21px 38px;
+    border: 1px solid var(--color-green);
+    border-radius: 10px;
+    background-color: var(--color-green);
+    color: var(--color-white);
+    font-family: var(--font-text);
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 1.3;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.button:hover {
+    border-color: var(--color-green-dark);
+    background-color: var(--color-green-dark);
+}
+
+/* bouton qui prend toute la largeur de son bloc */
+.button--block {
+    width: 100%;
+}
+
+.form-field {
+    margin-bottom: 32px;
+}
+
+.form-label {
+    display: block;
+    margin: 0 0 10px;
+    color: var(--color-grey);
+    font-size: 14px;
+    line-height: 1.2;
+}
+
+.form-input {
+    width: 100%;
+    height: 50px;
+    padding: 0 16px;
+    border: 1px solid #F0F0F0;
+    border-radius: 6px;
+    background-color: var(--color-white);
+    color: var(--color-text);
+    font-family: var(--font-text);
+    font-size: 14px;
+}
+
+/* contour vert visible quand on est dans le champ (accessibilité clavier) */
+.form-input:focus {
+    outline: 2px solid var(--color-green);
+    outline-offset: 1px;
+}
+
+.form-error {
+    margin: 0 0 24px;
+    color: var(--color-danger);
+    font-size: 14px;
+}
+
+/* petit texte d'aide sous un champ ("8 caractères minimum") */
+.form-hint {
+    margin: 6px 0 0;
+    color: var(--color-grey);
+    font-size: 12px;
+}
+
+/* =========================================================
+   6. Connexion et inscription
+   ========================================================= */
+.auth {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    min-height: 886px;
+}
+
+/* le formulaire commence à 150px du bord gauche, comme le logo sur la maquette */
+.auth__content {
+    padding: 128px 20px 60px 150px;
+}
+
+.auth__title {
+    margin-bottom: 52px;
+    font-size: 36px;
+}
+
+.auth__form {
+    width: 322px;
+    max-width: 100%;
+}
+
+.auth__switch {
+    margin: 40px 0 0;
+    font-size: 14px;
+}
+
+/* photo décorative : elle couvre toute la moitié droite */
+.auth__visual {
+    background: url('../images/auth.jpg') center / cover no-repeat;
+}
+
+/* =========================================================
+   7. Petits outils réutilisables
+   ========================================================= */
+
+/* texte invisible à l'écran, mais lu par les lecteurs d'écran */
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+
+/* étiquettes "disponible" / "non dispo." */
+.badge {
+    display: inline-block;
+    padding: 3px 12px;
+    border-radius: 9px;
+    color: var(--color-white);
+    font-size: 9px;
+    line-height: 12px;
+}
+
+.badge--available {
+    background-color: var(--color-available);
+}
+
+.badge--unavailable {
+    background-color: var(--color-unavailable);
+}
+
+/* =========================================================
+   8. Carte de livre (Nos livres, accueil)
+   ========================================================= */
+.book-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 200px);
+    gap: 48px 38px;
+}
+
+.book-card {
+    display: block;
+    overflow: hidden;
+    border-radius: 10px;
+    background-color: var(--color-white);
+    text-decoration: none;
+}
+
+/* le badge se place par rapport à ce bloc */
+.book-card__visual {
+    position: relative;
+}
+
+.book-card__image {
+    width: 200px;
+    height: 200px;
+    object-fit: cover;
+}
+
+.book-card__badge {
+    position: absolute;
+    top: 16px;
+    right: 12px;
+}
+
+.book-card__body {
+    padding: 19px 14px 26px;
+}
+
+.book-card__title {
+    color: var(--color-text);
+    font-family: var(--font-text);
+    font-size: 16px;
+    line-height: 1.2;
+}
+
+.book-card__author {
+    margin: 9px 0 0;
+    color: var(--color-grey);
+    font-size: 14px;
+    line-height: 1.2;
+}
+
+.book-card__owner {
+    margin: 22px 0 0;
+    color: var(--color-grey);
+    font-size: 10px;
+    font-style: italic;
+    line-height: 1.2;
+}
+
+/* titre ou auteur trop long : coupé avec "..." sur une seule ligne, comme sur la maquette */
+.book-card__title,
+.book-card__author {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.book-card:hover .book-card__title {
+    text-decoration: underline;
+}
+
+/* =========================================================
+   9. Nos livres à l'échange
+   ========================================================= */
+.books-page {
+    max-width: 914px;
+    margin: 0 auto;
+    padding: 130px 0 75px;
+}
+
+.books-page__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 70px;
+}
+
+.books-page__title {
+    font-size: 36px;
+}
+
+.search__input {
+    width: 322px;
+    padding-left: 40px;
+    background: var(--color-white) url('../images/icon-search.svg') no-repeat 11px center;
+}
+
+.books-page__empty {
+    color: var(--color-grey);
+    text-align: center;
+}
+
+/* petits titres en majuscules : DESCRIPTION, PROPRIÉTAIRE, BIBLIOTHEQUE... */
+.label-caps {
+    margin: 0;
+    color: var(--color-text);
+    font-family: var(--font-text);
+    font-size: 8px;
+    font-weight: 600;
+    line-height: 1.2;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+}
+
+/* =========================================================
+   10. Détail d'un livre
+   ========================================================= */
+.breadcrumb {
+    background-color: var(--color-beige);
+}
+
+.breadcrumb__inner {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    max-width: var(--content-width);
+    height: 44px;
+    margin: 0 auto;
+    color: var(--color-grey);
+    font-size: 10px;
+}
+
+.breadcrumb__inner a {
+    text-decoration: none;
+}
+
+.breadcrumb__inner a:hover {
+    text-decoration: underline;
+}
+
+.book-detail__layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    min-height: 863px;
+}
+
+/* l'image remplit toute la moitié gauche */
+.book-detail__visual {
+    position: relative;
+    background-color: var(--color-border);
+}
+
+.book-detail__image {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+/* le texte s'arrête à 150px du bord droit, comme le menu sur la maquette */
+.book-detail__content {
+    padding: 61px 150px 80px 85px;
+}
+
+.book-detail__title {
+    font-size: 36px;
+    line-height: 1.2;
+}
+
+.book-detail__author {
+    margin: 17px 0 0;
+    color: var(--color-grey);
+    font-size: 16px;
+    line-height: 1.2;
+}
+
+.book-detail__status {
+    margin: 12px 0 0;
+}
+
+.book-detail__separator {
+    width: 27px;
+    margin: 33px 0 33px;
+    border: 0;
+    border-top: 1px solid var(--color-grey);
+}
+
+.book-detail__description {
+    margin: 16px 0 0;
+    font-size: 14px;
+    line-height: 17px;
+}
+
+.book-detail__owner-label {
+    margin-top: 32px;
+}
+
+/* pastille du propriétaire : avatar rond + pseudo */
+.owner-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 16px;
+    padding: 6px 18px 6px 6px;
+    border-radius: 30px;
+    background-color: var(--color-white);
+    font-size: 14px;
+    text-decoration: none;
+}
+
+.owner-chip:hover {
+    text-decoration: underline;
+}
+
+.owner-chip__avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.book-detail__contact {
+    margin-top: 80px;
+}
+
+/* variante du bouton : fond transparent et bordure verte */
+.button--outline {
+    background-color: transparent;
+    color: var(--color-green);
+}
+
+.button--outline:hover {
+    background-color: var(--color-green);
+    color: var(--color-white);
+}
+
+/* =========================================================
+   11. Accueil
+   ========================================================= */
+
+/* ① Hero */
+.home-hero {
+    background-color: var(--color-beige);
+}
+
+.home-hero__inner {
+    display: grid;
+    grid-template-columns: 316px 404px;
+    justify-content: center;
+    column-gap: 118px;
+    padding: 80px 20px 100px;
+}
+
+.home-hero__text {
+    padding-top: 150px;
+}
+
+/* le titre peut déborder sur l'espace entre les colonnes, pour tenir sur 2 lignes */
+.home-hero__title {
+    width: 340px;
+    font-size: 36px;
+    line-height: 48px;
+}
+
+.home-hero__intro {
+    margin: 17px 0 42px;
+    line-height: 19px;
+}
+
+.home-hero__figure {
+    margin: 0;
+}
+
+.home-hero__image {
+    width: 404px;
+    height: 539px;
+    object-fit: cover;
+}
+
+.home-hero__credit {
+    margin-top: 11px;
+    color: var(--color-grey);
+    font-size: 12px;
+    font-style: italic;
+    text-align: right;
+}
+
+/* sections centrées : ② derniers livres et ③ comment ça marche */
+.home-section {
+    padding: 78px 20px 70px;
+    background-color: var(--color-beige);
+    text-align: center;
+}
+
+.home-section--light {
+    background-color: var(--color-background);
+}
+
+.home-section__title {
+    font-size: 32px;
+    line-height: 1.2;
+}
+
+/* ② Derniers livres : la grille est centrée, mais le texte des cartes reste à gauche */
+.home-latest__grid {
+    justify-content: center;
+    margin: 82px 0 48px;
+    text-align: left;
+}
+
+/* ③ Comment ça marche */
+.home-steps__intro {
+    max-width: 390px;
+    margin: 24px auto 41px;
+    line-height: 19px;
+}
+
+.home-steps {
+    display: grid;
+    grid-template-columns: repeat(4, 215px);
+    justify-content: center;
+    gap: 36px;
+    margin: 0 0 48px;
+    padding: 0;
+    list-style: none;
+}
+
+.home-steps__item {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 139px;
+    padding: 0 24px;
+    border-radius: 20px;
+    background-color: var(--color-white);
+    font-size: 14px;
+    line-height: 17px;
+}
+
+/* ④ Bandeau */
+.home-banner {
+    height: 230px;
+    background: url('../images/banner.jpg') center / cover no-repeat;
+}
+
+/* ⑤ Nos valeurs */
+.home-values {
+    background-color: var(--color-beige);
+}
+
+.home-values__inner {
+    max-width: 390px;
+    margin: 0 auto;
+    padding: 78px 0 88px;
+}
+
+.home-values .home-section__title {
+    margin-bottom: 31px;
+}
+
+.home-values p {
+    margin: 0 0 19px;
+    line-height: 19px;
+}
+
+/* la signature à gauche, le cœur à droite */
+.home-values__signature {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-top: 21px;
+}
+
+.home-values .home-values__team {
+    margin: 16px 0 0;
+    color: var(--color-grey);
+    font-size: 12px;
+    font-style: italic;
+}
+
+/* =========================================================
+   12. Mon compte et profil public
+   ========================================================= */
+
+/* bloc blanc aux coins arrondis (cartes et tableau) */
+.panel {
+    border-radius: 20px;
+    background-color: var(--color-white);
+}
+
+/* champ de formulaire sur fond gris-bleu (Mon compte) */
+.form-input--grey {
+    background-color: var(--color-input);
+}
+
+.account-page {
+    max-width: var(--content-width);
+    margin: 0 auto;
+    padding: 91px 0 104px;
+}
+
+.account-page__title {
+    margin-bottom: 51px;
+    font-size: 26px;
+    line-height: 1.2;
+}
+
+.account-page__cards {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 33px;
+    margin-bottom: 32px;
+}
+
+/* profil public : carte du membre à gauche (341px), tableau à droite */
+.profile-page {
+    display: grid;
+    grid-template-columns: 341px 1fr;
+    align-items: start;
+    gap: 28px;
+    max-width: var(--content-width);
+    margin: 0 auto;
+    padding: 103px 0 104px;
+}
+
+/* carte du membre */
+.member-card {
+    padding: 48px 20px 40px;
+    text-align: center;
+}
+
+/* la zone de la photo a la même hauteur avec ou sans le lien "modifier" */
+.member-card__photo {
+    min-height: 204px;
+}
+
+.member-card__avatar {
+    width: 135px;
+    height: 135px;
+    margin: 0 auto;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.member-card__edit {
+    display: inline-block;
+    margin-top: 4px;
+    color: var(--color-grey);
+    font-size: 14px;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+/* contour visible quand on arrive sur "modifier" au clavier */
+.member-card__photo input:focus + .member-card__edit,
+.member-card__edit:hover {
+    color: var(--color-text);
+}
+
+.member-card__separator {
+    width: 243px;
+    margin: 0 auto 46px;
+    border: 0;
+    border-top: 1px solid var(--color-line);
+}
+
+.member-card__pseudo {
+    font-size: 24px;
+    line-height: 1.2;
+}
+
+.member-card__since {
+    margin: 12px 0 0;
+    color: var(--color-grey);
+    font-size: 14px;
+}
+
+.member-card__library-label {
+    margin-top: 21px;
+}
+
+.member-card__count {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 6px;
+    margin: 5px 0 0;
+    font-size: 14px;
+}
+
+.member-card__action {
+    margin-top: 45px;
+}
+
+/* formulaire des informations personnelles */
+.account-form {
+    padding: 34px 20px 36px 117px;
+}
+
+.account-form__title {
+    margin-bottom: 26px;
+    color: var(--color-text);
+    font-family: var(--font-text);
+    font-size: 16px;
+    line-height: 1.2;
+}
+
+.account-form .form-input {
+    width: 322px;
+    max-width: 100%;
+}
+
+/* tableau de la bibliothèque */
+.library {
+    overflow: hidden;
+}
+
+.library__table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    text-align: left;
+}
+
+.library__table th {
+    height: 53px;
+    padding: 0 16px 0 0;
+    vertical-align: middle;
+}
+
+.library__table td {
+    height: 130px;
+    padding: 0 16px 0 0;
+    vertical-align: middle;
+}
+
+/* première colonne : 66px de marge à gauche, comme sur la maquette */
+.library__table th:first-child,
+.library__table td:first-child {
+    width: 224px;
+    padding-left: 66px;
+}
+
+.library__table th:nth-child(2) {
+    width: 181px;
+}
+
+.library__table th:nth-child(3) {
+    width: 175px;
+}
+
+.library__table th:nth-child(4) {
+    width: 213px;
+}
+
+.library__table th:nth-child(5) {
+    width: 146px;
+}
+
+/* une ligne sur deux en gris-bleu */
+.library__table tbody tr:nth-child(even) {
+    background-color: var(--color-input);
+}
+
+.library__photo {
+    width: 78px;
+    height: 78px;
+    object-fit: cover;
+}
+
+.library__link {
+    text-decoration: none;
+}
+
+.library__link:hover {
+    text-decoration: underline;
+}
+
+.library__description {
+    width: 127px;
+    margin: 0;
+    font-style: italic;
+    line-height: 15px;
+}
+
+.library__actions {
+    display: flex;
+    align-items: center;
+    gap: 29px;
+}
+
+.library__edit {
+    font-size: 12px;
+}
+
+/* le bouton "Supprimer" ressemble à un lien rouge (c'est un bouton car la suppression passe en POST) */
+.library__delete {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--color-danger);
+    font-family: var(--font-text);
+    font-size: 12px;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.library__empty {
+    padding: 40px;
+    color: var(--color-grey);
+    text-align: center;
+}
+
+/* =========================================================
+   13. Formulaire d'un livre (ajout et modification)
+   ========================================================= */
+.book-form-page {
+    max-width: var(--content-width);
+    margin: 0 auto;
+    padding: 40px 0 92px;
+}
+
+.back-link {
+    color: var(--color-grey);
+    font-size: 14px;
+    text-decoration: none;
+}
+
+.back-link:hover {
+    text-decoration: underline;
+}
+
+.book-form-page__title {
+    margin: 25px 0 24px;
+    font-size: 26px;
+    line-height: 1.2;
+}
+
+/* photo à gauche (488px), champs à droite (435px) */
+.book-form {
+    display: grid;
+    grid-template-columns: 488px 435px;
+    column-gap: 118px;
+    padding: 56px 50px 68px;
+}
+
+.book-form__photo {
+    display: flex;
+    flex-direction: column;
+}
+
+.book-form__image {
+    width: 488px;
+    height: 488px;
+    object-fit: cover;
+}
+
+.book-form__photo-link {
+    align-self: flex-end;
+    margin-top: 23px;
+    font-size: 12px;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+/* contour visible quand on arrive sur "Modifier la photo" au clavier */
+.book-form__photo input:focus + .book-form__photo-link,
+.book-form__photo-link:hover {
+    color: var(--color-green);
+}
+
+.book-form .form-label {
+    margin-bottom: 10px;
+}
+
+.form-textarea {
+    height: 356px;
+    padding: 16px 14px;
+    line-height: 17px;
+    resize: vertical;
+}
+
+/* liste déroulante : on remplace la flèche du navigateur par celle de la maquette */
+.form-select {
+    padding-right: 44px;
+    appearance: none;
+    background-image: url('../images/icon-chevron.svg');
+    background-repeat: no-repeat;
+    background-position: right 18px center;
+    cursor: pointer;
+}
+
+.book-form__submit {
+    width: 322px;
+    margin-top: 12px;
+}
+
+/* =========================================================
+   14. Messagerie
+   ========================================================= */
+
+/* photo de profil ronde */
+.avatar {
+    flex-shrink: 0;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.avatar--48 {
+    width: 48px;
+    height: 48px;
+}
+
+.avatar--24 {
+    width: 24px;
+    height: 24px;
+}
+
+/* liste des conversations (308px) à gauche, fil de discussion à droite
+   le fond beige prend toute la largeur, le contenu reste aligné sur les 1140px du site */
+.messaging-page {
+    background-color: var(--color-beige);
+}
+
+.messaging {
+    display: grid;
+    grid-template-columns: 308px 1fr;
+    column-gap: 44px;
+    max-width: var(--content-width);
+    height: 893px;
+    margin: 0 auto;
+}
+
+.messaging__sidebar {
+    overflow-y: auto;
+    padding-top: 57px;
+    background-color: var(--color-background);
+}
+
+.messaging__title {
+    margin: 0 34px 29px;
+    font-size: 26px;
+    line-height: 1.2;
+}
+
+.messaging__empty {
+    padding: 0 34px;
+    color: var(--color-grey);
+    font-size: 14px;
+}
+
+.conversation-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.conversation-list__item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 16px 34px;
+    text-decoration: none;
+}
+
+.conversation-list__item:hover,
+.conversation-list__item--current {
+    background-color: var(--color-white);
+}
+
+.conversation-list__item--unread .conversation-list__name {
+    font-weight: 600;
+}
+
+/* min-width: 0 permet au texte de se couper avec "..." au lieu d'élargir la colonne */
+.conversation-list__text {
+    flex: 1;
+    min-width: 0;
+}
+
+.conversation-list__top {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 14px;
+}
+
+.conversation-list__date {
+    font-size: 12px;
+}
+
+.conversation-list__preview {
+    display: block;
+    margin-top: 7px;
+    overflow: hidden;
+    color: var(--color-grey);
+    font-size: 12px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+/* fil de discussion : l'en-tête en haut, les messages au milieu, le formulaire en bas */
+.thread {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    padding: 35px 0 98px;
+}
+
+.thread__header {
+    margin: 0;
+    font-family: var(--font-text);
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.thread__contact {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    text-decoration: none;
+}
+
+/* column-reverse : la zone de défilement démarre en bas, sur les messages les plus récents */
+.thread__scroll {
+    display: flex;
+    flex: 1;
+    flex-direction: column-reverse;
+    overflow-y: auto;
+    margin: 20px 0 30px;
+}
+
+.thread__messages {
+    display: flex;
+    flex-direction: column;
+    gap: 29px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.message {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+}
+
+/* mes messages sont alignés à droite */
+.message--mine {
+    align-items: flex-end;
+}
+
+.message__meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 0 5px;
+    color: var(--color-grey);
+    font-size: 12px;
+}
+
+.message__bubble {
+    width: 500px;
+    max-width: 100%;
+    margin: 0;
+    padding: 11px 18px;
+    background-color: var(--color-white);
+    font-size: 12px;
+    line-height: 15px;
+    overflow-wrap: break-word;
+}
+
+.message--mine .message__bubble {
+    background-color: var(--color-input);
+}
+
+.thread__placeholder {
+    margin: auto;
+    color: var(--color-grey);
+    font-size: 14px;
+    text-align: center;
+}
+
+.thread__form {
+    display: flex;
+    gap: 21px;
+}
+
+.thread__input {
+    flex: 1;
+    height: 49px;
+}
+
+.thread__send {
+    width: 132px;
+    height: 49px;
+    padding: 0;
+}
+
+/* =========================================================
+   15. Pages de texte (mentions légales, confidentialité) et page 404
+   ========================================================= */
+.text-page {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 91px 0 104px;
+}
+
+.text-page h1 {
+    margin-bottom: 40px;
+    font-size: 36px;
+    line-height: 1.2;
+}
+
+.text-page h2 {
+    margin: 36px 0 12px;
+    color: var(--color-text);
+    font-family: var(--font-text);
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.text-page p,
+.text-page li {
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.text-page p {
+    margin: 0 0 12px;
+}
+
+.text-page ul {
+    margin: 0 0 12px;
+    padding-left: 20px;
+}
+
+.error-page {
+    padding: 150px 20px;
+    text-align: center;
+}
+
+.error-page__code {
+    margin: 0;
+    color: var(--color-green);
+    font-family: var(--font-title);
+    font-size: 96px;
+    line-height: 1;
+}
+
+.error-page__title {
+    margin-top: 16px;
+    font-size: 36px;
+    line-height: 1.2;
+}
+
+.error-page__text {
+    margin: 16px 0 40px;
+    color: var(--color-grey);
+}
