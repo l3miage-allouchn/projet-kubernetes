@@ -1,0 +1,2 @@
+# certificat de la CA du labo, regénéré par infra/cert-manager/install.sh
+infra/cert-manager/lab-ca.crt

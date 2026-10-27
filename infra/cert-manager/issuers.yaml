@@ -1,0 +1,37 @@
+# Autorité de certification (CA) du labo, en deux temps :
+#  1. l'émetteur "selfsigned" fabrique le certificat de la CA, signé par lui-même ;
+#  2. l'émetteur "lab-ca" utilise cette CA pour signer les certificats des sites.
+# Il suffit ainsi de faire confiance à une seule CA (sur le Mac) pour tous les sites
+# du cluster (TomTroc, Grafana...).
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: lab-ca
+  # un ClusterIssuer de type CA lit son secret dans le namespace de cert-manager
+  namespace: cert-manager
+spec:
+  isCA: true
+  commonName: TomTroc Lab CA
+  secretName: lab-ca
+  duration: 87600h # 10 ans
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    kind: ClusterIssuer
+    name: selfsigned
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: lab-ca
+spec:
+  ca:
+    secretName: lab-ca

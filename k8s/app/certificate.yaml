@@ -1,0 +1,19 @@
+# Certificat HTTPS de TomTroc, signé par la CA du labo et renouvelé automatiquement
+# par cert-manager 15 jours avant son expiration. Résultat : le Secret tomtroc-tls.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: tomtroc
+  namespace: tomtroc
+spec:
+  secretName: tomtroc-tls
+  dnsNames:
+    - tomtroc.localhost
+  duration: 2160h # 90 jours
+  renewBefore: 360h # 15 jours
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    kind: ClusterIssuer
+    name: lab-ca

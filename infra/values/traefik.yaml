@@ -19,6 +19,16 @@ providers:
   kubernetesCRD:
     enabled: true
 
+# tout ce qui arrive en HTTP (port 80) est redirigé vers HTTPS (port 443)
+ports:
+  web:
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
+
 # tableau de bord sur le point d'entrée interne "traefik" (port 8080), qui n'est pas
 # exposé par le Service : accessible seulement avec kubectl port-forward
 ingressRoute:

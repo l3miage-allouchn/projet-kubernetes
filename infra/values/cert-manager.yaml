@@ -1,0 +1,37 @@
+# cert-manager (chart jetstack/cert-manager) : crée et renouvelle les certificats TLS
+# décrits par des objets Certificate.
+
+# les CRD (Certificate, Issuer, ClusterIssuer...) sont installées par la chart ;
+# keep: true les garde si on désinstalle la chart, pour ne pas effacer tous les
+# certificats du cluster par accident
+crds:
+  enabled: true
+  keep: true
+
+# trois pods : le contrôleur, le webhook (valide les objets) et le cainjector
+# (injecte les CA dans les webhooks). 1 réplica chacun, mémoire limitée.
+replicaCount: 1
+resources:
+  requests:
+    cpu: 10m
+    memory: 48Mi
+  limits:
+    memory: 128Mi
+
+webhook:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 10m
+      memory: 24Mi
+    limits:
+      memory: 64Mi
+
+cainjector:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 10m
+      memory: 48Mi
+    limits:
+      memory: 128Mi

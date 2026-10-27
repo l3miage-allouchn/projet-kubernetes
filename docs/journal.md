@@ -483,3 +483,88 @@ kubectl -n tomtroc port-forward pod/<pod-B> 18082:8080
 | jeton ServiceAccount dans le pod | absent |
 | `kubectl auth can-i` (pods, secrets, configmaps, deployments, `*`) | `no` partout |
 | HPA | `cpu: 4%/70%`, 2 réplicas |
+
+---
+
+## Étape 5 — Ingress Traefik et HTTPS avec cert-manager
+
+Fichiers : `infra/values/cert-manager.yaml`, `infra/cert-manager/` (`issuers.yaml`,
+`install.sh`), `k8s/app/certificate.yaml`, `k8s/app/ingress.yaml`, redirection HTTP →
+HTTPS dans `infra/values/traefik.yaml`.
+
+```bash
+./infra/cert-manager/install.sh
+helm upgrade traefik traefik/traefik --version 42.1.3 -n traefik -f infra/values/traefik.yaml
+kubectl apply -f k8s/app/certificate.yaml -f k8s/app/ingress.yaml
+```
+
+### cert-manager
+
+Chart `jetstack/cert-manager` v1.21.3, namespace `cert-manager`, 3 pods (contrôleur,
+webhook, cainjector) à 1 réplica. Les CRD sont installées par la chart avec
+`crds.keep: true` : désinstaller la chart ne supprime pas les certificats du cluster.
+
+### Décision : une CA du labo plutôt qu'un certificat auto-signé par site
+
+1. `ClusterIssuer` **`selfsigned`** : ne sert qu'à fabriquer le certificat de la CA.
+2. `Certificate` **`lab-ca`** (`isCA: true`, « TomTroc Lab CA », ECDSA P-256, 10 ans),
+   secret `lab-ca` dans le namespace `cert-manager`.
+3. `ClusterIssuer` **`lab-ca`** (type `ca`) : signe les certificats des sites.
+
+Avantage : on fait confiance à **une seule CA** sur le Mac, valable pour tous les sites du
+cluster (TomTroc, puis Grafana à l'étape 8). Avec des certificats auto-signés, il faudrait
+accepter chaque certificat séparément, et recommencer à chaque renouvellement.
+
+### Certificat de TomTroc
+
+`Certificate` `tomtroc` : `tomtroc.localhost`, émis par `lab-ca`, 90 jours, renouvelé
+automatiquement 15 jours avant expiration, stocké dans le Secret `tomtroc-tls`.
+
+Nom de domaine : `*.localhost` pointe vers `127.0.0.1` (vérifié avec `dscacheutil`), donc
+aucune modification de `/etc/hosts`.
+
+### Ingress
+
+`ingressClassName: traefik`, section `tls` avec le Secret `tomtroc-tls`, annotation
+`traefik.ingress.kubernetes.io/router.entrypoints: websecure` (route seulement sur 443).
+
+### Redirection HTTP → HTTPS
+
+Changement par rapport au plan : au lieu d'un middleware par Ingress, redirection
+**globale** sur le point d'entrée `web` de Traefik (`ports.web.http.redirections`).
+Une seule ligne, valable pour tous les sites, en `301` (permanente).
+
+### Tests
+
+```bash
+CA=infra/cert-manager/lab-ca.crt
+curl https://tomtroc.localhost/                       # refusé : CA inconnue
+curl --cacert $CA https://tomtroc.localhost/          # 200
+curl -I http://tomtroc.localhost/livres               # 301 → https://tomtroc.localhost/livres
+echo | openssl s_client -connect tomtroc.localhost:443 -servername tomtroc.localhost \
+  -CAfile $CA 2>/dev/null | openssl x509 -noout -issuer -dates -ext subjectAltName
+```
+
+| Test | Résultat |
+|---|---|
+| curl sans la CA | `SSL certificate problem: unable to get local issuer certificate` |
+| curl avec la CA | 200 |
+| HTTP | `301` vers HTTPS |
+| connexion en HTTPS | session OK, redirections de l'appli restent en https (chemins relatifs) |
+| certificat | émetteur `TomTroc Lab CA`, `DNS:tomtroc.localhost`, 90 jours, TLS 1.3, `Verify return code: 0 (ok)` |
+
+### Faire confiance à la CA dans le navigateur (optionnel)
+
+```bash
+sudo security add-trusted-cert -d -r trustRoot \
+  -k /Library/Keychains/System.keychain infra/cert-manager/lab-ca.crt
+```
+
+Pour retirer cette confiance : supprimer « TomTroc Lab CA » dans Trousseaux d'accès.
+
+### Amélioration possible
+
+Le cookie de session n'a pas l'attribut `Secure` (il serait envoyé aussi en HTTP).
+La redirection 301 limite le risque ; on pourrait ajouter
+`session.cookie_secure = ${SESSION_COOKIE_SECURE}` dans `docker/php.ini` (0 en compose,
+1 dans Kubernetes).
