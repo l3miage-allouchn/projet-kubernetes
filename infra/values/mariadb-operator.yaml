@@ -1,0 +1,30 @@
+# mariadb-operator (chart mariadb-operator/mariadb-operator)
+# Les CRD sont installées à part, par la chart mariadb-operator-crds : on peut ainsi
+# mettre à jour l'opérateur sans toucher aux définitions (et inversement).
+crds:
+  enabled: false
+
+# trois pods : l'opérateur, le webhook (valide les objets MariaDB avant leur création)
+# et le cert-controller (certificats du webhook). 1 réplica chacun, mémoire limitée.
+resources:
+  requests:
+    cpu: 20m
+    memory: 64Mi
+  limits:
+    memory: 256Mi
+
+webhook:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 128Mi
+
+certController:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 128Mi

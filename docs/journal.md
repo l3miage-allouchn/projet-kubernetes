@@ -281,3 +281,105 @@ kubectl top pods -A --sort-by=memory
 ```
 
 Mesure après installation : control-plane 1200 Mi, workers 587 Mi et 794 Mi.
+
+---
+
+## Étape 3 — Base de données répliquée (mariadb-operator + Galera)
+
+Fichiers : `infra/values/mariadb-operator.yaml`, `infra/database/` (`mariadb.yaml`,
+`sqljob.yaml`, `install.sh`).
+
+```bash
+./infra/database/install.sh
+```
+
+### L'opérateur
+
+Un **opérateur** est un contrôleur qui ajoute des types d'objets à Kubernetes (des CRD) et
+sait les gérer : on décrit « un cluster MariaDB Galera de 3 nœuds », il crée le
+StatefulSet, les Services, les volumes, le PodDisruptionBudget, initialise le cluster et
+le répare après une panne.
+
+Deux charts Helm (version 26.10.2), dans le namespace `mariadb-operator` :
+
+- `mariadb-operator-crds` : les CRD (`MariaDB`, `SqlJob`, `User`, `Database`, `Grant`,
+  `Backup`…). Séparées pour mettre à jour l'opérateur sans toucher aux définitions.
+- `mariadb-operator` : trois pods (opérateur, webhook de validation, cert-controller
+  pour les certificats du webhook).
+
+### Galera
+
+Réplication **synchrone multi-maître** : chaque nœud a toutes les données et une écriture
+n'est validée que si la **majorité** des nœuds l'accepte (quorum). Avec 3 nœuds, le
+cluster survit à la perte d'un nœud (2/3 > 50 %), pas de deux. D'où un nombre impair.
+
+### Décision : un pod par nœud, y compris le control-plane
+
+Le control-plane a un taint `node-role.kubernetes.io/control-plane:NoSchedule` et il n'y a
+que 2 workers. Avec 3 pods sur 2 workers, un worker en porterait 2 : l'arrêter (étape 11)
+laisserait 1 nœud sur 3, sans quorum, et la base s'arrêterait.
+
+Solution : `affinity.antiAffinityEnabled: true` (anti-affinité obligatoire, un pod
+MariaDB par nœud) + une **toleration** pour le taint du control-plane. Compromis de
+laboratoire : en production on aurait 3 workers et on laisserait le control-plane libre.
+
+| Pod | Nœud |
+|---|---|
+| `mariadb-galera-0` | `desktop-worker` |
+| `mariadb-galera-1` | `desktop-control-plane` |
+| `mariadb-galera-2` | `desktop-worker2` |
+
+### Ressources
+
+`innodb_buffer_pool_size=64M`, `gcache.size=64M`, `max_connections=50`,
+`performance_schema=OFF`, requests 100m / 256Mi, limite 512Mi. Mesuré : 133 à 169 Mi par
+pod.
+
+### Mots de passe
+
+Générés au hasard par `install.sh` (`openssl rand -hex 16`) dans le Secret
+`mariadb-credentials` (clés `root-password` et `password`), seulement s'il n'existe pas.
+Ils ne sont jamais écrits dans git.
+
+```bash
+kubectl -n tomtroc get secret mariadb-credentials -o jsonpath='{.data.password}' | base64 -d
+```
+
+### Initialisation avec tomtroc.sql
+
+- `username: tomtroc`, `database: tomtroc` dans l'objet `MariaDB` : l'opérateur crée la
+  base et l'utilisateur avec tous les droits sur cette base.
+- `tomtroc.sql` est mis dans la ConfigMap `tomtroc-sql`, puis exécuté par un **SqlJob**
+  (un Job géré par l'opérateur, lancé quand la base est prête).
+- Attention : le script commence par des `DROP TABLE`. Supprimer puis recréer le SqlJob
+  remettrait la base à zéro.
+
+### Ce que l'opérateur a créé
+
+- StatefulSet `mariadb-galera` : 2 conteneurs par pod (`mariadb` + l'agent Galera de
+  l'opérateur) et 2 volumes `local-path` (`storage-…` 1 Gi pour les données, `galera-…`
+  pour la configuration Galera du nœud)
+- Services : `mariadb-galera` (tous les nœuds), `mariadb-galera-primary` (le nœud
+  principal), `mariadb-galera-secondary`, `mariadb-galera-internal` (headless, réplication)
+- PodDisruptionBudget `minAvailable: 50%` : une maintenance ne peut arrêter qu'un pod à
+  la fois
+
+Pour l'application (étape 4), on utilisera **`mariadb-galera-primary`** : toutes les
+écritures vont vers un seul nœud, ce qui évite les conflits de certification Galera
+(deux nœuds qui modifient la même ligne en même temps). Si ce nœud tombe, l'opérateur
+désigne un autre principal et le Service le suit.
+
+### Vérifications
+
+```bash
+kubectl get mariadb,sqljob,pods,pvc -n tomtroc -o wide
+P=$(kubectl -n tomtroc get secret mariadb-credentials -o jsonpath='{.data.password}' | base64 -d)
+kubectl -n tomtroc exec mariadb-galera-0 -c mariadb -- mariadb -utomtroc -p"$P" tomtroc \
+  -e "SHOW STATUS LIKE 'wsrep_cluster_size'; SELECT COUNT(*) FROM users;"
+```
+
+Résultats :
+
+- sur les 3 nœuds : `wsrep_cluster_size=3`, `wsrep_cluster_status=Primary`,
+  `wsrep_local_state_comment=Synced` ; 10 users, 16 books, 6 messages partout
+- écriture sur `galera-1` (control-plane) → lue immédiatement sur `galera-2`
