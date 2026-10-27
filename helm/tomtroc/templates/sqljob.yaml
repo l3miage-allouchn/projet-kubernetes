@@ -1,0 +1,34 @@
+{{- if .Values.mariadb.initSql.enabled }}
+# Schéma et données de test (files/tomtroc.sql), importés une seule fois quand la base
+# est prête. Attention : le script commence par des DROP TABLE ; supprimer puis
+# recréer le SqlJob remettrait la base à zéro.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "tomtroc.fullname" . }}-sql
+  labels:
+    app.kubernetes.io/name: mariadb
+    {{- include "tomtroc.commonLabels" . | nindent 4 }}
+data:
+  tomtroc.sql: |
+    {{- .Files.Get "files/tomtroc.sql" | nindent 4 }}
+---
+apiVersion: k8s.mariadb.com/v1alpha1
+kind: SqlJob
+metadata:
+  name: {{ include "tomtroc.fullname" . }}-init
+  labels:
+    app.kubernetes.io/name: mariadb
+    {{- include "tomtroc.commonLabels" . | nindent 4 }}
+spec:
+  mariaDbRef:
+    name: {{ .Values.mariadb.name }}
+  username: {{ .Values.mariadb.username }}
+  passwordSecretKeyRef:
+    name: {{ .Values.mariadb.credentialsSecret }}
+    key: password
+  database: {{ .Values.mariadb.database }}
+  sqlConfigMapKeyRef:
+    name: {{ include "tomtroc.fullname" . }}-sql
+    key: tomtroc.sql
+{{- end }}

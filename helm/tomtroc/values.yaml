@@ -1,0 +1,133 @@
+# Valeurs par défaut de la chart TomTroc.
+# Prérequis dans le cluster (installés par infra/) : Traefik, cert-manager et le
+# ClusterIssuer "lab-ca", mariadb-operator, la StorageClass "nfs-csi", metrics-server.
+#
+# Une seule release par namespace : Redis, MariaDB et le Secret des mots de passe ont
+# des noms fixes (redis, mariadb-galera, mariadb-credentials).
+#
+#   helm upgrade --install tomtroc helm/tomtroc -n tomtroc --create-namespace -f helm/tomtroc/values-prod.yaml
+
+# --- Application ------------------------------------------------------------------
+
+image:
+  repository: nesrix/tomtroc
+  # vide = appVersion de Chart.yaml. Toujours une version précise, jamais "latest".
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# nombre de pods quand le HPA est désactivé (sinon le HPA décide)
+replicaCount: 2
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 96Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+# répartit les pods sur les nœuds (le control-plane, qui les refuse, est ignoré)
+topologySpread:
+  enabled: true
+
+# HPA : ajoute des pods quand la charge CPU dépasse le seuil (en % de la request)
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 4
+  targetCPUUtilizationPercentage: 70
+
+# PodDisruptionBudget : nombre de pods toujours disponibles pendant une maintenance
+pdb:
+  enabled: true
+  minAvailable: 1
+
+# volume partagé (ReadWriteMany) pour les images envoyées par les membres
+uploads:
+  storageClass: nfs-csi
+  size: 1Gi
+
+# --- Accès depuis l'extérieur -------------------------------------------------------
+
+ingress:
+  enabled: true
+  className: traefik
+  host: tomtroc.localhost
+  # point d'entrée Traefik : websecure = HTTPS (443)
+  entrypoint: websecure
+  tls:
+    enabled: true
+    # ClusterIssuer cert-manager qui signe le certificat (CA du labo)
+    clusterIssuer: lab-ca
+    duration: 2160h # 90 jours
+    renewBefore: 360h # 15 jours
+
+# --- Sessions (Redis) ---------------------------------------------------------------
+
+redis:
+  # false = sessions en fichiers dans chaque pod (à réserver à un seul réplica)
+  enabled: true
+  image: redis:7.4-alpine
+  # au-delà, Redis supprime en priorité les sessions les plus anciennes
+  maxmemory: 64mb
+  resources:
+    requests:
+      cpu: 20m
+      memory: 32Mi
+    limits:
+      memory: 96Mi
+
+# --- Base de données (objet MariaDB géré par mariadb-operator) -----------------------
+
+mariadb:
+  name: mariadb-galera
+  database: tomtroc
+  username: tomtroc
+  # Secret des mots de passe (clés root-password et password). Créé avec des valeurs
+  # aléatoires à la première installation, puis conservé tel quel (fonction lookup),
+  # même après "helm uninstall".
+  credentialsSecret: mariadb-credentials
+
+  # Galera : réplication synchrone multi-maître. Il faut un nombre impair de nœuds
+  # (3 minimum) pour garder une majorité après une panne.
+  # false = un seul serveur MariaDB, sans réplication (développement).
+  galera:
+    enabled: true
+    # cache des écritures récentes, pour resynchroniser un nœud qui revient
+    gcacheSize: 64M
+  replicas: 3
+
+  storage:
+    size: 1Gi
+    storageClass: local-path
+
+  # un pod MariaDB par nœud (anti-affinité obligatoire)
+  antiAffinity: true
+  # autorise les pods MariaDB sur le control-plane : avec 2 workers seulement, c'est
+  # ce qui permet d'avoir 3 nœuds Galera sur 3 machines différentes (compromis de labo)
+  tolerateControlPlane: true
+
+  myCnf: |
+    [mariadb]
+    bind-address=*
+    default_storage_engine=InnoDB
+    binlog_format=row
+    innodb_autoinc_lock_mode=2
+    character_set_server=utf8mb4
+    collation_server=utf8mb4_unicode_ci
+    # réglages réduits pour un Mac avec peu de mémoire
+    innodb_buffer_pool_size=64M
+    max_connections=50
+    performance_schema=OFF
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+
+  # import de files/tomtroc.sql (copie de app/sql/tomtroc.sql) par un SqlJob, une seule
+  # fois. Attention : le script commence par des DROP TABLE.
+  initSql:
+    enabled: true

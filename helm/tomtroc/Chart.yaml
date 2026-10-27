@@ -1,0 +1,8 @@
+apiVersion: v2
+name: tomtroc
+description: TomTroc, site d'échange de livres (PHP + MariaDB Galera + Redis)
+type: application
+# version de la chart (à augmenter à chaque modification des templates)
+version: 0.1.0
+# version de l'application déployée par défaut (étiquette de l'image Docker)
+appVersion: "1.0.1"

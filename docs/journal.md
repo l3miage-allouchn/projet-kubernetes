@@ -568,3 +568,89 @@ Le cookie de session n'a pas l'attribut `Secure` (il serait envoyé aussi en HTT
 La redirection 301 limite le risque ; on pourrait ajouter
 `session.cookie_secure = ${SESSION_COOKIE_SECURE}` dans `docker/php.ini` (0 en compose,
 1 dans Kubernetes).
+
+---
+
+## Étape 6 — Chart Helm `helm/tomtroc`
+
+### Contenu
+
+```
+helm/tomtroc/
+├── Chart.yaml            version de la chart 0.1.0, appVersion 1.0.1 (étiquette de l'image)
+├── values.yaml           valeurs par défaut commentées (= production)
+├── values-prod.yaml      production : HPA 2-4, PDB, Galera 3 nœuds, tomtroc.localhost
+├── values-dev.yaml       dev : 1 pod, sans HPA/PDB, MariaDB seul, tomtroc-dev.localhost
+├── files/tomtroc.sql     copie de app/sql/tomtroc.sql (Helm ne lit que les fichiers de la chart)
+└── templates/            Deployment, Service, ConfigMap, ServiceAccount, PVC, HPA, PDB,
+                          Certificate, Ingress, Redis, Secret, MariaDB, SqlJob, NOTES.txt
+```
+
+Ce qui reste dans `infra/` : Traefik, cert-manager, mariadb-operator, NFS,
+metrics-server. Ce sont des composants partagés par tout le cluster.
+
+```bash
+helm lint helm/tomtroc -f helm/tomtroc/values-prod.yaml
+helm upgrade --install tomtroc helm/tomtroc -n tomtroc -f helm/tomtroc/values-prod.yaml
+helm upgrade --install tomtroc helm/tomtroc -n tomtroc-dev --create-namespace -f helm/tomtroc/values-dev.yaml
+```
+
+### Choix dans les templates
+
+- **Secret des mots de passe avec `lookup`** : si le Secret existe, la chart reprend ses
+  valeurs ; sinon elle en génère (`randAlphaNum 32`). Sans cela, chaque `helm upgrade`
+  changerait les mots de passe. Vérifié : même empreinte avant et après un upgrade.
+- **`helm.sh/resource-policy: keep`** sur le Secret, l'objet `MariaDB` et le PVC des
+  uploads : `helm uninstall` ne supprime pas les données.
+- **`checksum/config`** sur les pods : quand la ConfigMap change, les pods sont recréés pour
+  la relire (sinon les variables d'environnement restent les anciennes).
+- **`replicas` absent quand le HPA est actif** : sinon chaque `helm upgrade` remettrait le
+  nombre de pods à la valeur des values, en écrasant la décision du HPA.
+- **`DB_HOST`** calculé : `<nom>-primary` avec Galera, `<nom>` sans Galera.
+- **Sélecteurs = `app.kubernetes.io/name` seul** : le sélecteur d'un Deployment ne peut plus
+  changer après sa création ; ajouter un label au sélecteur aurait obligé à supprimer le
+  Deployment. Les autres labels standard (`instance`, `version`, `part-of`, `managed-by`,
+  `helm.sh/chart`) sont sur les objets.
+- Une release par namespace : Redis, MariaDB et le Secret ont des noms fixes.
+
+### Reprise de l'existant par Helm (adoption)
+
+Les objets créés aux étapes 3 à 5 avec `kubectl apply` existaient déjà : `helm install`
+refuse normalement d'écraser un objet qu'il ne gère pas. Deux options : tout supprimer
+puis réinstaller (perte de la base, des uploads et des sessions), ou faire **adopter** les
+objets par Helm. Choix : l'adoption.
+
+1. Liste des 15 objets produits par la chart (`helm template`) : tous existent déjà avec
+   le même nom.
+2. Marquage pour Helm (métadonnées seulement, aucun redémarrage) :
+   ```bash
+   kubectl -n tomtroc label <type>/<nom> app.kubernetes.io/managed-by=Helm --overwrite
+   kubectl -n tomtroc annotate <type>/<nom> meta.helm.sh/release-name=tomtroc \
+     meta.helm.sh/release-namespace=tomtroc --overwrite
+   ```
+3. Comparaison avant installation (`--dry-run=server` pour que `lookup` lise le vrai
+   Secret) :
+   ```bash
+   helm template tomtroc helm/tomtroc -n tomtroc -f helm/tomtroc/values-prod.yaml \
+     --dry-run=server | kubectl diff -n tomtroc -f -
+   ```
+   Résultat : seulement des labels et annotations, sauf pour le Deployment
+   (`checksum/config` → rolling update, et `replicas` qui n'est plus fixé par la chart :
+   le HPA le maintient à 2). **Aucun changement de spec** pour MariaDB, Redis, le SqlJob.
+4. `helm install` : les pods Galera et Redis n'ont pas redémarré (sessions conservées),
+   l'application a fait un rolling update sans coupure.
+
+Vérifications après l'adoption : connexion OK, image envoyée à l'étape 4 toujours servie,
+mot de passe inchangé après un second `helm upgrade` (révision 2, aucun redémarrage).
+
+### Environnement de dev
+
+Installé dans `tomtroc-dev` à partir de zéro : nouveau Secret, MariaDB seul (`mariadb-0`),
+import SQL, certificat `tomtroc-dev.localhost`. Isolé de la prod : base et mots de passe
+différents (le livre de test ajouté en prod n'existe pas en dev). Consommation :
+~107 Mi pour toute la dev.
+
+```bash
+helm list -A | grep tomtroc
+curl --cacert infra/cert-manager/lab-ca.crt https://tomtroc-dev.localhost/
+```

@@ -1,0 +1,48 @@
+# Développement : un exemplaire de chaque, le moins de mémoire possible (namespace tomtroc-dev).
+#   helm upgrade --install tomtroc helm/tomtroc -n tomtroc-dev --create-namespace -f helm/tomtroc/values-dev.yaml
+
+replicaCount: 1
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 250m
+    memory: 192Mi
+
+topologySpread:
+  enabled: false
+
+autoscaling:
+  enabled: false
+
+# avec un seul pod, un PDB bloquerait toute maintenance du nœud
+pdb:
+  enabled: false
+
+uploads:
+  size: 256Mi
+
+ingress:
+  host: tomtroc-dev.localhost
+
+redis:
+  maxmemory: 32mb
+
+# un seul serveur MariaDB, sans Galera
+mariadb:
+  name: mariadb
+  galera:
+    enabled: false
+  replicas: 1
+  antiAffinity: false
+  tolerateControlPlane: false
+  storage:
+    size: 512Mi
+  resources:
+    requests:
+      cpu: 50m
+      memory: 192Mi
+    limits:
+      memory: 384Mi

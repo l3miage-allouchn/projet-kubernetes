@@ -1,0 +1,21 @@
+{{- if and .Values.ingress.enabled .Values.ingress.tls.enabled }}
+# Certificat HTTPS signé par la CA du labo, renouvelé automatiquement par cert-manager
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "tomtroc.fullname" . }}
+  labels:
+    {{- include "tomtroc.labels" . | nindent 4 }}
+spec:
+  secretName: {{ include "tomtroc.fullname" . }}-tls
+  dnsNames:
+    - {{ .Values.ingress.host }}
+  duration: {{ .Values.ingress.tls.duration }}
+  renewBefore: {{ .Values.ingress.tls.renewBefore }}
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    kind: ClusterIssuer
+    name: {{ .Values.ingress.tls.clusterIssuer }}
+{{- end }}

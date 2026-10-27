@@ -1,0 +1,17 @@
+# Images envoyées par les membres, partagées par tous les pods (ReadWriteMany sur NFS).
+# Gardé après "helm uninstall" pour ne pas perdre les images par accident.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "tomtroc.fullname" . }}-uploads
+  labels:
+    {{- include "tomtroc.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  storageClassName: {{ .Values.uploads.storageClass }}
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: {{ .Values.uploads.size }}

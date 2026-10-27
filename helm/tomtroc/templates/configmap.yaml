@@ -1,0 +1,18 @@
+# Réglages non secrets, lus par docker/config.php et docker/php.ini
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "tomtroc.fullname" . }}-config
+  labels:
+    {{- include "tomtroc.labels" . | nindent 4 }}
+data:
+  DB_HOST: {{ include "tomtroc.dbHost" . }}
+  DB_NAME: {{ .Values.mariadb.database }}
+  DB_USER: {{ .Values.mariadb.username }}
+  {{- if .Values.redis.enabled }}
+  SESSION_SAVE_HANDLER: redis
+  SESSION_SAVE_PATH: tcp://redis:6379
+  {{- else }}
+  SESSION_SAVE_HANDLER: files
+  SESSION_SAVE_PATH: /tmp
+  {{- end }}

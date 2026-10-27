@@ -1,0 +1,12 @@
+TomTroc {{ include "tomtroc.imageTag" . }} est déployé dans le namespace {{ .Release.Namespace }}.
+
+{{- if .Values.ingress.enabled }}
+
+Adresse : {{ if .Values.ingress.tls.enabled }}https{{ else }}http{{ end }}://{{ .Values.ingress.host }}/
+{{- end }}
+
+État :
+  kubectl -n {{ .Release.Namespace }} get pods,svc,ingress
+  kubectl -n {{ .Release.Namespace }} get mariadb,sqljob
+
+Base de données : {{ .Values.mariadb.name }} ({{ if .Values.mariadb.galera.enabled }}Galera, {{ .Values.mariadb.replicas }} nœuds{{ else }}un seul serveur{{ end }})

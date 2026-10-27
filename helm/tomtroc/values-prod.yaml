@@ -1,0 +1,22 @@
+# Production : haute disponibilité (namespace tomtroc).
+#   helm upgrade --install tomtroc helm/tomtroc -n tomtroc -f helm/tomtroc/values-prod.yaml
+# Les valeurs par défaut (values.yaml) sont déjà celles de la production ; ce fichier
+# les rend explicites pour les points importants.
+
+replicaCount: 2
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 4
+
+pdb:
+  enabled: true
+
+ingress:
+  host: tomtroc.localhost
+
+mariadb:
+  galera:
+    enabled: true
+  replicas: 3

@@ -1,0 +1,53 @@
+# Base de données, créée et réparée par mariadb-operator. Gardée après "helm uninstall"
+# (resource-policy: keep) : une désinstallation ne doit pas effacer les données.
+apiVersion: k8s.mariadb.com/v1alpha1
+kind: MariaDB
+metadata:
+  name: {{ .Values.mariadb.name }}
+  labels:
+    app.kubernetes.io/name: mariadb
+    {{- include "tomtroc.commonLabels" . | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  rootPasswordSecretKeyRef:
+    name: {{ .Values.mariadb.credentialsSecret }}
+    key: root-password
+
+  # utilisateur et base de l'application, créés par l'opérateur
+  username: {{ .Values.mariadb.username }}
+  passwordSecretKeyRef:
+    name: {{ .Values.mariadb.credentialsSecret }}
+    key: password
+  database: {{ .Values.mariadb.database }}
+
+  replicas: {{ .Values.mariadb.replicas }}
+
+  {{- if .Values.mariadb.galera.enabled }}
+  galera:
+    enabled: true
+    providerOptions:
+      gcache.size: {{ .Values.mariadb.galera.gcacheSize }}
+  {{- end }}
+
+  storage:
+    size: {{ .Values.mariadb.storage.size }}
+    storageClassName: {{ .Values.mariadb.storage.storageClass }}
+
+  {{- if .Values.mariadb.antiAffinity }}
+  affinity:
+    antiAffinityEnabled: true
+  {{- end }}
+
+  {{- if .Values.mariadb.tolerateControlPlane }}
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+  {{- end }}
+
+  myCnf: |
+    {{- .Values.mariadb.myCnf | nindent 4 }}
+
+  resources:
+    {{- toYaml .Values.mariadb.resources | nindent 4 }}

@@ -1,0 +1,120 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "tomtroc.fullname" . }}
+  labels:
+    {{- include "tomtroc.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  revisionHistoryLimit: 3
+  # mise à jour sans coupure : un nouveau pod doit être prêt avant qu'un ancien s'arrête
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "tomtroc.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "tomtroc.selectorLabels" . | nindent 8 }}
+      annotations:
+        # change quand la ConfigMap change : les pods sont alors recréés pour la relire
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "tomtroc.fullname" . }}
+      automountServiceAccountToken: false
+
+      # www-data (uid/gid 33) ; fsGroup : le groupe 33 peut écrire dans le volume des uploads
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 33
+        runAsGroup: 33
+        fsGroup: 33
+        seccompProfile:
+          type: RuntimeDefault
+
+      {{- if .Values.topologySpread.enabled }}
+      # répartir les pods sur les nœuds ; nodeTaintsPolicy: Honor ignore le control-plane
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          nodeTaintsPolicy: Honor
+          labelSelector:
+            matchLabels:
+              {{- include "tomtroc.selectorLabels" . | nindent 14 }}
+      {{- end }}
+
+      containers:
+        - name: tomtroc
+          image: "{{ .Values.image.repository }}:{{ include "tomtroc.imageTag" . }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: {{ include "tomtroc.fullname" . }}-config
+          env:
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.mariadb.credentialsSecret }}
+                  key: password
+
+          # /health.php ne touche ni à la base ni aux sessions : un souci de base ne
+          # doit pas faire redémarrer les pods de l'application
+          startupProbe:
+            httpGet:
+              path: /health.php
+              port: http
+            periodSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /health.php
+              port: http
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health.php
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+
+          # système de fichiers en lecture seule : seuls les volumes ci-dessous sont modifiables
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+
+          volumeMounts:
+            - name: uploads
+              mountPath: /var/www/html/public/uploads
+            - name: tmp
+              mountPath: /tmp
+            - name: apache-run
+              mountPath: /var/run/apache2
+            - name: apache-lock
+              mountPath: /var/lock/apache2
+      volumes:
+        - name: uploads
+          persistentVolumeClaim:
+            claimName: {{ include "tomtroc.fullname" . }}-uploads
+        - name: tmp
+          emptyDir: {}
+        - name: apache-run
+          emptyDir: {}
+        - name: apache-lock
+          emptyDir: {}
