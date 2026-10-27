@@ -137,3 +137,23 @@ docker buildx build --builder multiarch --platform linux/amd64,linux/arm64 \
   -f docker/Dockerfile -t <utilisateur>/tomtroc:1.0.0 --push .
 docker buildx imagetools inspect <utilisateur>/tomtroc:1.0.0
 ```
+
+### Publication sur Docker Hub
+
+Pourquoi un registry : avec le Kubernetes « kind » de Docker Desktop, chaque nœud a son
+propre stock d'images (containerd). Une image construite avec `docker build` n'y est pas
+visible (vérifié avec `kubectl get node desktop-worker -o jsonpath='{.status.images}'`).
+Les nœuds doivent donc la télécharger depuis un registry.
+
+Connexion faite dans Docker Desktop (compte `nesrix`). Image publiée :
+**`nesrix/tomtroc:1.0.0`**, dépôt public (pas besoin d'`imagePullSecret`).
+
+```bash
+docker buildx build --builder multiarch --platform linux/amd64,linux/arm64 \
+  -f docker/Dockerfile -t nesrix/tomtroc:1.0.0 --push .
+docker buildx imagetools inspect nesrix/tomtroc:1.0.0
+```
+
+L'index contient un manifeste `linux/amd64`, un manifeste `linux/arm64` et leurs
+attestations (provenance du build). Chaque nœud télécharge automatiquement la version
+de son architecture.
