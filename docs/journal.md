@@ -654,3 +654,20 @@ différents (le livre de test ajouté en prod n'existe pas en dev). Consommation
 helm list -A | grep tomtroc
 curl --cacert infra/cert-manager/lab-ca.crt https://tomtroc-dev.localhost/
 ```
+
+### Nettoyage après le passage à Helm
+
+Supprimés de git (la chart les remplace ; un `kubectl apply` sur ces fichiers entrerait
+en conflit avec Helm) : `k8s/app/` (10 manifestes), `infra/database/mariadb.yaml`,
+`infra/database/sqljob.yaml`. `infra/database/install.sh` n'installe plus que
+mariadb-operator. Les anciens fichiers restent consultables dans l'historique git
+(commits des étapes 3 à 5).
+
+Ordre d'installation complet du projet :
+
+```bash
+./infra/install.sh                 # Traefik, local-path, NFS, metrics-server
+./infra/database/install.sh        # mariadb-operator
+./infra/cert-manager/install.sh    # cert-manager et CA du labo
+helm upgrade --install tomtroc helm/tomtroc -n tomtroc --create-namespace -f helm/tomtroc/values-prod.yaml
+```
