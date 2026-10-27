@@ -1,0 +1,16 @@
+# metrics-server (chart metrics-server/metrics-server) : CPU et mémoire des pods,
+# utilisés par "kubectl top" et par le HPA
+
+replicas: 1
+
+# les kubelets de kind ont des certificats auto-signés : sans cette option,
+# metrics-server refuse de les interroger
+args:
+  - --kubelet-insecure-tls
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    memory: 128Mi

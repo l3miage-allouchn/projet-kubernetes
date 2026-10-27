@@ -157,3 +157,127 @@ docker buildx imagetools inspect nesrix/tomtroc:1.0.0
 L'index contient un manifeste `linux/amd64`, un manifeste `linux/arm64` et leurs
 attestations (provenance du build). Chaque nœud télécharge automatiquement la version
 de son architecture.
+
+---
+
+## Étape 2 — Infrastructure du cluster (Helm)
+
+Tout est dans `infra/` : un fichier de valeurs commenté par chart (`infra/values/`) et un
+script rejouable, `infra/install.sh` (`helm upgrade --install` installe ou met à jour).
+
+| Composant | Chart | Namespace | Rôle |
+|---|---|---|---|
+| Traefik v3.7 | `traefik/traefik` 42.1.3 | `traefik` | IngressController (Ingress + CRD Traefik) |
+| local-path-provisioner | `infra/charts/local-path-provisioner` (v0.0.37) | `local-path-helm` | volumes locaux, StorageClass par défaut `local-path` |
+| serveur NFS | manifeste `infra/nfs-server.yaml` | `nfs` | stockage partagé dans le cluster |
+| NFS CSI driver | `csi-driver-nfs/csi-driver-nfs` 4.13.6 | `kube-system` | StorageClass `nfs-csi` (ReadWriteMany) |
+| metrics-server | `metrics-server/metrics-server` 3.14.0 | `kube-system` | `kubectl top`, HPA |
+
+```bash
+./infra/install.sh
+helm list -A
+```
+
+### Ressources disponibles
+
+Chaque nœud affiche 10 CPU et 8 Go, mais les trois nœuds kind sont des conteneurs qui
+**partagent la même VM Docker (~7,75 Go)**. D'où 1 réplica par composant d'infra et des
+`requests`/`limits` faibles. La stack `docker compose` de l'étape 1 a été arrêtée
+(`docker compose stop`, sans suppression) pour libérer de la mémoire.
+
+### Traefik
+
+- Service `LoadBalancer`, 1 réplica, non-root (valeurs par défaut de la chart)
+- deux providers actifs : `KubernetesIngress` (Ingress standard) et `KubernetesCRD`
+  (`IngressRoute`, `TraefikService` : pondération pour l'A/B testing et Flagger)
+- classe d'Ingress par défaut, journaux d'accès activés
+- tableau de bord sur le point d'entrée interne `traefik` (8080), non exposé par le
+  Service :
+
+```bash
+kubectl -n traefik port-forward deploy/traefik 9000:8080
+# http://localhost:9000/dashboard/
+```
+
+Problème : la chart valide ses valeurs avec un schéma JSON ; `logs.access` a été refusé
+(« additional properties 'logs' not allowed »), la bonne clé est `accessLog.enabled`.
+
+### Pourquoi MetalLB est inutile avec Docker Desktop
+
+MetalLB donne une IP aux Services `LoadBalancer` sur un cluster sans cloud, en l'annonçant
+sur le réseau local (ARP/BGP). Ici :
+
+1. **Docker Desktop fournit déjà ce service** : le Service Traefik a reçu l'IP
+   `172.21.0.7` et Docker Desktop publie ses ports sur le Mac (`lsof` montre le processus
+   Docker Desktop en écoute sur `*:80`). `curl http://localhost/` → `404 page not found`,
+   la réponse de Traefik (aucune route encore).
+2. **Une IP MetalLB serait injoignable** : `curl http://172.21.0.7/` depuis le Mac ne
+   répond pas. Les nœuds kind sont sur un réseau Docker interne à la VM, non routé vers
+   macOS ; une IP annoncée par MetalLB sur ce réseau resterait invisible.
+
+### local-path-provisioner
+
+kind fournit déjà un local-path-provisioner (StorageClass `standard`, provisioner
+`rancher.io/local-path`), mais pas via Helm. Celui de Helm est **ajouté à côté** :
+StorageClass `local-path`, provisioner `cluster.local/local-path-provisioner`, namespace
+`local-path-helm`. La chart n'est pas publiée dans un dépôt Helm : elle est copiée depuis
+le dépôt GitHub (tag v0.0.37) dans `infra/charts/`.
+
+`local-path` devient la StorageClass par défaut :
+
+```bash
+kubectl annotate storageclass standard storageclass.kubernetes.io/is-default-class=false --overwrite
+```
+
+Les volumes sont dans `/var/local-path-helm` sur les nœuds (voir NFS ci-dessous).
+
+### Stockage partagé NFS
+
+Un volume `local-path` est attaché à un seul nœud (ReadWriteOnce). Les réplicas de
+TomTroc, répartis sur deux workers, doivent partager `uploads/` : il faut du
+**ReadWriteMany**, fourni ici par NFS.
+
+1. **Le noyau le permet** : le noyau de la VM (`6.12.76-linuxkit`), partagé par les
+   nœuds kind, contient `nfs`, `nfs4` et `nfsd` :
+   ```bash
+   docker run --rm --privileged alpine:3.20 grep nfs /proc/filesystems
+   ```
+2. **Image du serveur** : les images connues (`itsthenetwork/nfs-server-alpine`,
+   `erichough/nfs-server`) n'existent qu'en amd64 et ne sont plus maintenues ; la seule
+   image multi-arch trouvée vient d'un éditeur inconnu, à éviter pour un pod privilégié.
+   On construit donc la nôtre : `docker/nfs-server/` (Alpine + `nfs-utils` + un script),
+   publiée en **`nesrix/nfs-server:1.0.0`** (amd64 + arm64). NFSv4 uniquement, en TCP :
+   un seul port, 2049. Testée d'abord avec deux conteneurs Docker.
+3. **Piège overlayfs** : le serveur NFS du noyau ne peut pas partager un dossier sur
+   overlayfs (le système de fichiers des conteneurs). Dans un nœud kind, `/var` est un vrai
+   volume ext4 : les volumes local-path sont donc créés sous `/var/local-path-helm`.
+4. **Serveur dans le cluster** (`infra/nfs-server.yaml`) : Deployment à 1 réplica
+   (stratégie `Recreate`), pod privilégié (nécessaire pour piloter `nfsd`), données sur un
+   PVC `local-path` de 5 Gi, Service `nfs-server.nfs.svc.cluster.local:2049`.
+5. **Driver CSI** : StorageClass `nfs-csi` (`server: nfs-server.nfs.svc.cluster.local`,
+   `share: /`, NFS 4.1). Chaque PVC devient un sous-dossier `pvc-...` sur le serveur.
+
+Test (`infra/tests/nfs-rwx-test.yaml`) : un PVC `nfs-csi` en ReadWriteMany monté par un
+pod sur `desktop-worker` (écrit) et un pod sur `desktop-worker2` (lit, puis écrit à son
+tour) : chaque pod voit les écritures de l'autre.
+
+```bash
+kubectl apply -f infra/tests/nfs-rwx-test.yaml
+kubectl exec rwx-reader -- cat /data/test.txt
+kubectl exec -n nfs deploy/nfs-server -- ls /exports
+```
+
+Limite à noter pour le rapport : le serveur NFS est un point unique de défaillance. Son
+volume `local-path` est lié au nœud où il a été créé : si ce worker tombe, le stockage
+partagé est indisponible jusqu'à son retour (à observer à l'étape 11).
+
+### metrics-server
+
+Option `--kubelet-insecure-tls` : les kubelets de kind ont des certificats auto-signés.
+
+```bash
+kubectl top nodes
+kubectl top pods -A --sort-by=memory
+```
+
+Mesure après installation : control-plane 1200 Mi, workers 587 Mi et 794 Mi.

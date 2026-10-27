@@ -1,0 +1,39 @@
+# Traefik : IngressController du cluster (chart traefik/traefik)
+# Les valeurs par défaut de la chart conviennent pour le reste : ports web (80) et
+# websecure (443), Service LoadBalancer, conteneur non-root en lecture seule.
+
+deployment:
+  replicas: 1
+
+# Traefik est la classe d'Ingress par défaut : un Ingress sans ingressClassName l'utilise
+ingressClass:
+  enabled: true
+  isDefaultClass: true
+
+providers:
+  # Ingress standard de Kubernetes (étapes 4-5)
+  kubernetesIngress:
+    enabled: true
+  # CRD Traefik (IngressRoute, TraefikService) : nécessaires pour la répartition
+  # pondérée de l'A/B testing (étape 7) et pour Flagger (étape 9)
+  kubernetesCRD:
+    enabled: true
+
+# tableau de bord sur le point d'entrée interne "traefik" (port 8080), qui n'est pas
+# exposé par le Service : accessible seulement avec kubectl port-forward
+ingressRoute:
+  dashboard:
+    enabled: true
+    entryPoints: ["traefik"]
+
+# journal de chaque requête : utile pour voir vers quelle version part le trafic
+accessLog:
+  enabled: true
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 128Mi

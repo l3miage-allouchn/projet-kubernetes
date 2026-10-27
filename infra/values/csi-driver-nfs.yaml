@@ -1,0 +1,17 @@
+# Driver CSI NFS (chart csi-driver-nfs/csi-driver-nfs)
+# Crée un sous-dossier sur le serveur NFS pour chaque PVC de la StorageClass "nfs-csi".
+
+controller:
+  replicas: 1
+
+storageClass:
+  create: true
+  name: nfs-csi
+  parameters:
+    # serveur NFS déployé dans le cluster (infra/nfs-server.yaml)
+    server: nfs-server.nfs.svc.cluster.local
+    share: /
+  reclaimPolicy: Delete
+  volumeBindingMode: Immediate
+  mountOptions:
+    - nfsvers=4.1

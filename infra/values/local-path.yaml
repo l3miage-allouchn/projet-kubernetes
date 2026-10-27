@@ -1,0 +1,31 @@
+# local-path-provisioner installé par Helm (chart copiée dans infra/charts/)
+# Il cohabite avec celui fourni par kind (StorageClass "standard") : nom de
+# StorageClass et nom de provisioner différents.
+
+storageClass:
+  create: true
+  name: local-path
+  provisionerName: cluster.local/local-path-provisioner
+  defaultClass: true
+  reclaimPolicy: Delete
+  volumeBindingMode: WaitForFirstConsumer
+
+# dossier des volumes sur chaque nœud. Il doit être sous /var : dans un nœud kind,
+# /var est un vrai disque (ext4), alors que le reste est en overlayfs, que le
+# serveur NFS du noyau ne sait pas partager.
+nodePathMap:
+  - node: DEFAULT_PATH_FOR_NON_LISTED_NODES
+    paths:
+      - /var/local-path-helm
+
+# image utilisée pour créer et supprimer les dossiers : version fixée plutôt que "latest"
+helperImage:
+  repository: docker.io/library/busybox
+  tag: "1.37"
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 16Mi
+  limits:
+    memory: 64Mi
