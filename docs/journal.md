@@ -383,3 +383,103 @@ Résultats :
 - sur les 3 nœuds : `wsrep_cluster_size=3`, `wsrep_cluster_status=Primary`,
   `wsrep_local_state_comment=Synced` ; 10 users, 16 books, 6 messages partout
 - écriture sur `galera-1` (control-plane) → lue immédiatement sur `galera-2`
+
+---
+
+## Étape 4 — Déploiement de l'application
+
+Manifestes YAML dans `k8s/app/` (ils deviendront une chart Helm à l'étape 6), namespace
+`tomtroc` :
+
+```bash
+kubectl apply -f k8s/app/ --dry-run=server   # validation par l'API, sans rien créer
+kubectl apply -f k8s/app/
+kubectl -n tomtroc rollout status deploy/tomtroc
+```
+
+| Fichier | Contenu |
+|---|---|
+| `serviceaccount.yaml` | ServiceAccount `tomtroc`, sans droit, jeton non monté |
+| `configmap.yaml` | `DB_HOST=mariadb-galera-primary`, `DB_NAME`, `DB_USER`, sessions Redis |
+| `redis.yaml` | Redis 7.4 (sessions), 1 pod non-root, sans disque, 64 Mo max |
+| `pvc-uploads.yaml` | PVC `nfs-csi` ReadWriteMany 1 Gi pour `public/uploads` |
+| `deployment.yaml` | 2 réplicas, probes, ressources, sécurité |
+| `service.yaml` | Service ClusterIP `tomtroc` port 80 → 8080 |
+| `hpa.yaml` | 2 à 4 réplicas, seuil 70 % CPU |
+| `pdb.yaml` | au moins 1 pod disponible pendant une maintenance |
+
+### Image 1.0.1 : endpoint de santé
+
+Ajout de `app/public/health.php`, qui répond `ok` sans toucher à la base ni aux sessions.
+Les probes ne doivent pas dépendre de la base : si MariaDB a un problème, la
+`livenessProbe` redémarrerait en boucle tous les pods de l'application, ce qui n'arrange
+rien et ajoute de la charge. Image : `nesrix/tomtroc:1.0.1` (étiquette par version, jamais
+`latest`, pour savoir exactement ce qui tourne et pouvoir revenir en arrière).
+
+### Configuration : ConfigMap + Secret
+
+- ConfigMap `tomtroc-config` chargée entière avec `envFrom`.
+- `DB_PASSWORD` lu directement dans le Secret `mariadb-credentials` créé à l'étape 3
+  (`secretKeyRef`) : le mot de passe n'est recopié nulle part.
+- `DB_HOST=mariadb-galera-primary` : toutes les écritures vont au même nœud Galera.
+
+### Probes
+
+| Probe | Rôle | Réglage |
+|---|---|---|
+| `startupProbe` | laisser le temps de démarrer | toutes les 2 s, jusqu'à 60 s |
+| `readinessProbe` | n'envoyer du trafic qu'aux pods prêts | toutes les 5 s, 3 échecs |
+| `livenessProbe` | redémarrer un pod bloqué | toutes les 10 s, 3 échecs |
+
+### Ressources et HPA
+
+- requests 100m / 96Mi, limits 500m / 256Mi. Mesuré au repos : 14 à 43 Mi par pod.
+- HPA `autoscaling/v2` : 2 à 4 réplicas, cible 70 % de la request CPU (70m).
+- Juste après le déploiement, le HPA affiche `cpu: <unknown>/70%` : il ignore les mesures
+  des pods qui viennent de démarrer. Une minute plus tard : `cpu: 4%/70%`.
+
+### Répartition des pods
+
+`topologySpreadConstraints` sur `kubernetes.io/hostname`, avec `nodeTaintsPolicy: Honor`.
+Sans cette option, le control-plane (qui refuse les pods de l'appli) compte comme un
+emplacement vide : avec `maxSkew: 1`, un 3e pod serait refusé (2 sur un worker contre 0
+sur le control-plane). Résultat : un pod sur `desktop-worker`, un sur `desktop-worker2`.
+
+### Sécurité du conteneur
+
+- `runAsNonRoot`, uid/gid 33 (www-data), `seccompProfile: RuntimeDefault`
+- `allowPrivilegeEscalation: false`, toutes les capabilities retirées (`CapEff: 0`)
+- `readOnlyRootFilesystem: true` : écriture possible seulement dans les volumes `/tmp`,
+  `/var/run/apache2`, `/var/lock/apache2` (emptyDir) et `uploads` (NFS)
+- `fsGroup: 33` : le volume NFS des uploads est accessible en écriture au groupe www-data
+
+### RBAC minimal
+
+L'application n'appelle jamais l'API Kubernetes : le minimum, c'est **aucun droit**.
+ServiceAccount dédié `tomtroc`, lié à aucun Role, avec
+`automountServiceAccountToken: false` (le jeton n'existe pas dans le pod : un attaquant
+dans le conteneur n'aurait rien pour parler à l'API).
+
+```bash
+kubectl auth can-i '*' '*' -n tomtroc --as=system:serviceaccount:tomtroc:tomtroc   # no
+```
+
+### Tests
+
+Port-forward vers chacun des deux pods (un par worker) pour prouver le partage :
+
+```bash
+kubectl -n tomtroc port-forward svc/tomtroc 18080:80
+kubectl -n tomtroc port-forward pod/<pod-A> 18081:8080
+kubectl -n tomtroc port-forward pod/<pod-B> 18082:8080
+```
+
+| Test | Résultat |
+|---|---|
+| `/health.php`, accueil, `/livres` via le Service | `ok`, 200, 16 livres |
+| connexion sur le pod A, Mon compte sur le pod B avec le même cookie | session reconnue (Redis) |
+| image envoyée au pod A, demandée au pod B | 200, 242 130 octets (NFS), fichier `33:33` |
+| `touch /var/www/html/public/pirate.php` | `Read-only file system` |
+| jeton ServiceAccount dans le pod | absent |
+| `kubectl auth can-i` (pods, secrets, configmaps, deployments, `*`) | `no` partout |
+| HPA | `cpu: 4%/70%`, 2 réplicas |
