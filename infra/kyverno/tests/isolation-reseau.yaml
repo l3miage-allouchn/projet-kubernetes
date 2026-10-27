@@ -1,0 +1,33 @@
+# Test de la règle "generate" (isolation-reseau) : namespace marqué, un serveur et un
+# client. Kyverno doit créer la NetworkPolicy "isolation-par-defaut".
+#   kubectl apply -f infra/kyverno/tests/isolation-reseau.yaml
+# Nettoyage : kubectl delete namespace demo-isolation
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: demo-isolation
+  labels:
+    tomtroc.io/isolation: "true"
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: serveur
+  namespace: demo-isolation
+  labels: {app.kubernetes.io/name: serveur}
+spec:
+  containers:
+    - name: web
+      image: nesrix/tomtroc:1.1.0
+      ports: [{containerPort: 8080}]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: client
+  namespace: demo-isolation
+  labels: {app.kubernetes.io/name: client}
+spec:
+  containers:
+    - name: client
+      image: nesrix/tomtroc:1.1.0

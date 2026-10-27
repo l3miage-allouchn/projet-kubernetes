@@ -1,0 +1,62 @@
+# Sans probes, Kubernetes envoie du trafic à un pod pas encore prêt et ne redémarre pas
+# un pod bloqué : readinessProbe et livenessProbe obligatoires dans tomtroc.
+# Les pods des Jobs (import SQL) sont exclus : ils se terminent, une probe n'a pas de sens.
+#
+# Deux règles explicites : Kyverno sait d'habitude recopier une règle "Pod" sur les
+# Deployments (autogen), mais pas quand elle exclut des pods par sélecteur de labels.
+# Sans la 2e règle, un Deployment sans probes serait accepté et seuls ses pods seraient
+# refusés, sans message pour la personne qui fait l'apply.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: exiger-probes
+  annotations:
+    policies.kyverno.io/title: Probes obligatoires
+    pod-policies.kyverno.io/autogen-controllers: none
+spec:
+  # si Kyverno ne répond pas (redémarrage, nœud saturé), la création est acceptée au
+  # lieu d'être refusée : la disponibilité du cluster passe avant le contrôle (journal)
+  failurePolicy: Ignore
+  background: true
+  rules:
+    - name: probes-pods
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: [tomtroc]
+      exclude:
+        any:
+          - resources:
+              selector:
+                matchExpressions:
+                  - key: batch.kubernetes.io/job-name
+                    operator: Exists
+      validate:
+        failureAction: Enforce
+        message: "Chaque conteneur doit avoir une readinessProbe et une livenessProbe."
+        pattern:
+          spec:
+            containers:
+              - readinessProbe:
+                  periodSeconds: ">0"
+                livenessProbe:
+                  periodSeconds: ">0"
+    - name: probes-controleurs
+      match:
+        any:
+          - resources:
+              kinds: [Deployment, StatefulSet, DaemonSet]
+              namespaces: [tomtroc]
+      validate:
+        failureAction: Enforce
+        message: "Chaque conteneur du modèle de pod doit avoir une readinessProbe et une livenessProbe."
+        pattern:
+          spec:
+            template:
+              spec:
+                containers:
+                  - readinessProbe:
+                      periodSeconds: ">0"
+                    livenessProbe:
+                      periodSeconds: ">0"

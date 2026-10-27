@@ -1,0 +1,55 @@
+# Règle "generate" : dans chaque namespace marqué tomtroc.io/isolation=true, Kyverno crée
+# une NetworkPolicy qui n'accepte que le trafic venant du même namespace, de Traefik
+# et de Prometheus. synchronize: true la recrée si quelqu'un la supprime.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: isolation-reseau
+  annotations:
+    policies.kyverno.io/title: NetworkPolicy par défaut
+spec:
+  # si Kyverno ne répond pas (redémarrage, nœud saturé), la création est acceptée au
+  # lieu d'être refusée : la disponibilité du cluster passe avant le contrôle (journal)
+  failurePolicy: Ignore
+  rules:
+    - name: networkpolicy-par-defaut
+      match:
+        any:
+          - resources:
+              kinds: [Namespace]
+              selector:
+                matchLabels:
+                  tomtroc.io/isolation: "true"
+      generate:
+        apiVersion: networking.k8s.io/v1
+        kind: NetworkPolicy
+        name: isolation-par-defaut
+        namespace: "{{request.object.metadata.name}}"
+        synchronize: true
+        data:
+          spec:
+            podSelector: {}
+            policyTypes: [Ingress]
+            ingress:
+              - from:
+                  - podSelector: {}
+                  - namespaceSelector:
+                      matchLabels:
+                        kubernetes.io/metadata.name: traefik
+                  - namespaceSelector:
+                      matchLabels:
+                        kubernetes.io/metadata.name: monitoring
+---
+# Kyverno doit avoir le droit de créer des NetworkPolicy : ce ClusterRole s'ajoute
+# automatiquement aux siens grâce aux labels "aggregate-to"
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kyverno:networkpolicies
+  labels:
+    rbac.kyverno.io/aggregate-to-admission-controller: "true"
+    rbac.kyverno.io/aggregate-to-background-controller: "true"
+rules:
+  - apiGroups: [networking.k8s.io]
+    resources: [networkpolicies]
+    verbs: [get, list, watch, create, update, patch, delete]

@@ -1,0 +1,102 @@
+# Pods de test des politiques Kyverno, à envoyer en "dry-run" (rien n'est créé) :
+#   kubectl apply --dry-run=server -f infra/kyverno/tests/pods-de-test.yaml
+# Chaque document est testé séparément par infra/kyverno/tests/tester.sh.
+---
+# 1. CONFORME : notre image, probes, non-root -> accepté
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-conforme
+  namespace: tomtroc
+  labels: {app.kubernetes.io/name: test}
+spec:
+  securityContext: {runAsNonRoot: true, runAsUser: 33}
+  containers:
+    - name: app
+      image: nesrix/tomtroc:1.1.0
+      readinessProbe: {httpGet: {path: /health.php, port: 8080}}
+      livenessProbe: {httpGet: {path: /health.php, port: 8080}}
+---
+# 2. REFUSÉ : image d'un registre non approuvé (nginx)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-registre
+  namespace: tomtroc
+  labels: {app.kubernetes.io/name: test}
+spec:
+  containers:
+    - name: web
+      image: nginx:1.27
+      readinessProbe: {tcpSocket: {port: 80}}
+      livenessProbe: {tcpSocket: {port: 80}}
+---
+# 3. REFUSÉ : conteneur privilégié dans tomtroc
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-privilegie
+  namespace: tomtroc
+  labels: {app.kubernetes.io/name: test}
+spec:
+  containers:
+    - name: app
+      image: nesrix/tomtroc:1.1.0
+      securityContext: {privileged: true}
+      readinessProbe: {httpGet: {path: /health.php, port: 8080}}
+      livenessProbe: {httpGet: {path: /health.php, port: 8080}}
+---
+# 4. ACCEPTÉ : le même pod privilégié dans nfs (exception prévue)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-privilegie-nfs
+  namespace: nfs
+spec:
+  containers:
+    - name: app
+      image: nesrix/nfs-server:1.0.0
+      securityContext: {privileged: true}
+---
+# 5. REFUSÉ : hostNetwork dans default
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-hostnetwork
+  namespace: default
+spec:
+  hostNetwork: true
+  containers:
+    - name: app
+      image: nesrix/tomtroc:1.1.0
+---
+# 6. REFUSÉ : volume hostPath dans default
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-hostpath
+  namespace: default
+spec:
+  containers:
+    - name: app
+      image: nesrix/tomtroc:1.1.0
+      volumeMounts: [{name: hote, mountPath: /hote}]
+  volumes:
+    - name: hote
+      hostPath: {path: /etc}
+---
+# 7. REFUSÉ : Deployment sans probes dans tomtroc (refusé dès le Deployment)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-sans-probes
+  namespace: tomtroc
+spec:
+  selector: {matchLabels: {app.kubernetes.io/name: test-sans-probes}}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: test-sans-probes}
+    spec:
+      containers:
+        - name: app
+          image: nesrix/tomtroc:1.1.0

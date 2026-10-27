@@ -1,0 +1,38 @@
+# Les conteneurs de tomtroc doivent déclarer runAsNonRoot. En mode Audit : rien n'est
+# bloqué, les pods non conformes apparaissent dans les PolicyReport (kubectl get polr).
+# Certains pods sont créés par des opérateurs (MariaDB) : on regarde d'abord le rapport
+# avant de passer en Enforce.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: exiger-non-root
+  annotations:
+    policies.kyverno.io/title: Conteneurs non-root
+spec:
+  # si Kyverno ne répond pas (redémarrage, nœud saturé), la création est acceptée au
+  # lieu d'être refusée : la disponibilité du cluster passe avant le contrôle (journal)
+  failurePolicy: Ignore
+  background: true
+  rules:
+    - name: run-as-non-root
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: [tomtroc]
+      validate:
+        failureAction: Audit
+        message: "runAsNonRoot: true doit être déclaré (au niveau du pod ou de chaque conteneur)."
+        anyPattern:
+          # au niveau du pod (aucun conteneur ne le désactive)
+          - spec:
+              securityContext:
+                runAsNonRoot: true
+              containers:
+                - =(securityContext):
+                    =(runAsNonRoot): true
+          # ou dans chaque conteneur
+          - spec:
+              containers:
+                - securityContext:
+                    runAsNonRoot: true

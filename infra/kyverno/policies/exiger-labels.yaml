@@ -1,0 +1,27 @@
+# Label standard app.kubernetes.io/name : permet de savoir à quelle application
+# appartient un pod (tableaux de bord, sélecteurs). En mode Audit.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: exiger-labels
+  annotations:
+    policies.kyverno.io/title: Labels standards
+spec:
+  # si Kyverno ne répond pas (redémarrage, nœud saturé), la création est acceptée au
+  # lieu d'être refusée : la disponibilité du cluster passe avant le contrôle (journal)
+  failurePolicy: Ignore
+  background: true
+  rules:
+    - name: label-app-name
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: [tomtroc]
+      validate:
+        failureAction: Audit
+        message: "Le label app.kubernetes.io/name est obligatoire."
+        pattern:
+          metadata:
+            labels:
+              app.kubernetes.io/name: "?*"

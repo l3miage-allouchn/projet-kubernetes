@@ -1,0 +1,33 @@
+# Kyverno (chart kyverno/kyverno) : contrôleur d'admission qui valide, modifie ou génère
+# des objets selon des politiques (ClusterPolicy). Version allégée : 1 réplica par contrôleur.
+
+# images téléchargées depuis ghcr.io : le registre par défaut (reg.kyverno.io) coupait
+# les téléchargements ("short read: unexpected EOF")
+global:
+  image:
+    registry: ghcr.io
+
+admissionController:
+  replicas: 1
+  # Le contrôleur d'admission est sur le chemin de toutes les créations de pods : si
+  # Kyverno ne répond pas, la création est refusée. On le place sur le control-plane,
+  # jamais arrêté dans les tests (s'il tombe, l'API tombe aussi) : l'arrêt d'un worker
+  # (étape 11) ne bloque pas la recréation des pods.
+  nodeSelector:
+    node-role.kubernetes.io/control-plane: ""
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+
+# applique les règles "generate" et analyse les objets déjà présents
+backgroundController:
+  replicas: 1
+
+# produit les PolicyReport (violations en mode Audit)
+reportsController:
+  replicas: 1
+
+# suppression programmée d'objets : non utilisée ici
+cleanupController:
+  enabled: false

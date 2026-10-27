@@ -1004,3 +1004,127 @@ dernière analyse) jusqu'au prochain vrai changement. Site : 200, `x-app-version
 `startupapicheck`, qui ne se termine que lorsque le webhook accepte les objets. Sur un
 cluster neuf, le `kubectl apply` des émetteurs pouvait sinon échouer quelques secondes
 trop tôt.
+
+---
+
+## Étape 10 (bonus) — Politiques de sécurité avec Kyverno
+
+Fichiers : `infra/values/kyverno.yaml`, `infra/kyverno/install.sh`,
+`infra/kyverno/policies/` (7 politiques), `infra/kyverno/tests/`.
+
+```bash
+./infra/kyverno/install.sh
+kubectl get clusterpolicy
+./infra/kyverno/tests/tester.sh
+```
+
+### Principe
+
+Kyverno est un **contrôleur d'admission** : l'API Kubernetes lui soumet chaque objet
+créé ou modifié avant de l'enregistrer. Les règles (`ClusterPolicy`) peuvent :
+
+- **valider** (accepter/refuser) ; en mode `Enforce` l'objet est refusé, en mode `Audit`
+  il est accepté et la violation est notée dans un **PolicyReport** ;
+- **modifier** (mutate) ;
+- **générer** d'autres objets (generate).
+
+### Installation (chart `kyverno/kyverno` 3.9.2, Kyverno 1.19.2)
+
+- 1 réplica par contrôleur (admission, background, reports), contrôleur de nettoyage
+  désactivé. Consommation mesurée : ~175 Mi au total.
+- **Contrôleur d'admission sur le control-plane** (`nodeSelector` + toleration) : il est
+  sur le chemin de toutes les créations de pods ; placé sur un worker, l'arrêt de ce
+  worker (étape 11) aurait bloqué la recréation des pods.
+- Problème : images de `reg.kyverno.io` en échec (`short read: expected 1597 bytes but got
+  0: unexpected EOF`), release Helm en `failed` après 10 min. Solution :
+  `global.image.registry: ghcr.io` (mêmes images, amd64 + arm64).
+- Kyverno 1.19 signale que `kyverno.io/v1 ClusterPolicy` est **déprécié** au profit de
+  nouvelles API basées sur CEL (`ValidatingPolicy`, `GeneratingPolicy`…). `ClusterPolicy`
+  fonctionne encore et c'est le format le plus documenté : gardé, migration possible.
+
+### Les politiques
+
+| Politique | Type | Portée | Mode |
+|---|---|---|---|
+| `registres-approuves` | validate | `tomtroc` : `nesrix/`, `redis`, `mariadb`, `prom/`, `ghcr.io/mariadb-operator/`, `ghcr.io/fluxcd/` | Enforce |
+| `interdire-privilegie` | validate | tout le cluster sauf `nfs` (serveur NFS) et `kube-system` | Enforce |
+| `interdire-acces-hote` | validate | `hostNetwork`/`hostPID`/`hostIPC`/`hostPath`, sauf `monitoring` (node-exporter), `local-path-*`, `kube-system` | Enforce |
+| `exiger-probes` | validate | `tomtroc`, pods (sauf Jobs) **et** Deployments/StatefulSets/DaemonSets | Enforce |
+| `exiger-non-root` | validate | `tomtroc` | Audit |
+| `exiger-labels` | validate | `tomtroc`, label `app.kubernetes.io/name` | Audit |
+| `isolation-reseau` | **generate** | NetworkPolicy dans chaque namespace marqué `tomtroc.io/isolation=true` | — |
+
+Avant d'écrire les règles, audit des pods existants : l'opérateur MariaDB et Flagger
+utilisent des images `ghcr.io/...`, `mariadb`, `prom/` ; le serveur NFS et le driver CSI
+sont privilégiés ; node-exporter utilise `hostNetwork`/`hostPath`. Une règle naïve les
+aurait bloqués.
+
+Pour `isolation-reseau`, un ClusterRole avec les labels
+`rbac.kyverno.io/aggregate-to-*-controller` donne à Kyverno le droit de créer des
+NetworkPolicy. Le réseau de kind (kindnet) applique bien les NetworkPolicy (droits
+`list/watch` dans son ClusterRole, et vérifié par le test ci-dessous).
+
+### Problème majeur : saturation de la VM et `failurePolicy`
+
+Juste après l'installation, les trois contrôleurs Kyverno redémarraient en boucle (code
+de sortie 0, « Shutdown signal received »). Cause dans les journaux : **impossible de
+renouveler le bail de leader** (`Failed to renew lease err="context deadline exceeded"`).
+`kube-scheduler` et `kube-controller-manager` avaient redémarré au même moment pour la
+même raison : l'API répondait trop lentement.
+
+Mesures dans la VM Docker : 2 Go disponibles sur 7,75 Go, 372 Mo de swap utilisé,
+**pression I/O de 20 %** (les processus attendent le disque : swap + écritures d'etcd).
+L'ajout de Kyverno a fait déborder une VM déjà pleine.
+
+Conséquence dangereuse : avec `failurePolicy: Fail` (défaut), **aucun pod ne peut être
+créé pendant que Kyverno redémarre**, dans tous les namespaces concernés.
+Décision : **`failurePolicy: Ignore`** sur toutes les politiques. Si Kyverno ne répond
+pas, la création est acceptée (et l'analyse en arrière-plan la signalera dans les
+rapports). Compromis assumé : disponibilité > contrôle strict, pour un cluster aux
+ressources limitées. En production : 3 réplicas du contrôleur d'admission et `Fail`.
+
+Vérification : les pods passent par le webhook `validate.kyverno.svc-ignore` ; les
+webhooks restés en `Fail` ne concernent que les objets de Kyverno lui-même (politiques,
+exceptions, objets générés). Après le changement : Kyverno stable, pression I/O < 1 %.
+
+### Autogen et exclusions par label
+
+Kyverno recopie normalement une règle « Pod » sur les Deployments (autogen), pour
+refuser directement le Deployment avec un message clair. Mais il ne le fait pas quand la
+règle exclut des pods par **sélecteur de labels** (ici les pods des Jobs) : un Deployment
+sans probes était accepté, seuls ses pods étaient refusés, sans message à l'`apply`.
+Solution : une 2e règle explicite sur `Deployment`/`StatefulSet`/`DaemonSet`
+(`spec.template.spec.containers`).
+
+### Tests (`kubectl apply --dry-run=server` : Kyverno examine, rien n'est créé)
+
+Le script attend que Kyverno soit prêt : avec `Ignore`, un test lancé pendant un
+redémarrage accepterait tout et ne prouverait rien.
+
+| Objet de test | Résultat |
+|---|---|
+| pod conforme (notre image, probes, non-root) | accepté |
+| image `nginx:1.27` dans `tomtroc` | refusé : `registres-approuves` |
+| pod privilégié dans `tomtroc` | refusé : `interdire-privilegie` |
+| même pod privilégié dans `nfs` | accepté (exception) |
+| `hostNetwork: true` dans `default` | refusé : `interdire-acces-hote` |
+| volume `hostPath` dans `default` | refusé : `interdire-acces-hote` |
+| Deployment sans probes dans `tomtroc` | refusé : `exiger-probes` |
+
+Règle `generate` (`infra/kyverno/tests/isolation-reseau.yaml`) : namespace
+`demo-isolation` marqué → NetworkPolicy `isolation-par-defaut` créée par Kyverno ; client
+du même namespace → serveur : **200** ; loadtester du namespace `tomtroc` → serveur :
+**bloqué**.
+
+Non-régression : `helm upgrade --dry-run=server` de TomTroc accepté.
+
+### Rapports sur l'existant (`kubectl get policyreport -A`)
+
+- `registres-approuves`, `exiger-probes` : **aucun échec** dans `tomtroc` (TomTroc,
+  MariaDB, Redis, Flagger conformes).
+- `interdire-privilegie`, `interdire-acces-hote` : échecs uniquement dans `kube-system`
+  (kindnet, kube-proxy, etcd, CSI NFS). Pas bloqués à l'admission (kube-system exclu par
+  la configuration de Kyverno), mais visibles dans les rapports de l'analyse en
+  arrière-plan : `kube-system` ajouté aux exclusions pour des rapports lisibles.
+- Audit `exiger-non-root` : loadtester de Flagger, exporter MariaDB, pod du SqlJob
+  (images d'autres projets) ; `exiger-labels` : pod du SqlJob. D'où le mode Audit.

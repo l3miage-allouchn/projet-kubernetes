@@ -1,0 +1,41 @@
+# Un conteneur privilégié a presque tous les droits sur le nœud : interdit partout,
+# sauf pour le serveur NFS (namespace nfs), qui doit piloter le serveur NFS du noyau.
+# (kube-system, où tourne le driver CSI NFS, est exclu par la configuration de Kyverno.)
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: interdire-privilegie
+  annotations:
+    policies.kyverno.io/title: Conteneurs privilégiés interdits
+spec:
+  # si Kyverno ne répond pas (redémarrage, nœud saturé), la création est acceptée au
+  # lieu d'être refusée : la disponibilité du cluster passe avant le contrôle (journal)
+  failurePolicy: Ignore
+  background: true
+  rules:
+    - name: pas-de-privileged
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+      exclude:
+        any:
+          - resources:
+              # kube-system : déjà exclu à l'admission par la configuration de
+              # Kyverno ; exclu ici aussi pour que les rapports n'affichent pas
+              # les composants système (kube-proxy, driver CSI NFS)
+              namespaces: [nfs, kube-system]
+      validate:
+        failureAction: Enforce
+        message: "Les conteneurs privilégiés (privileged: true) sont interdits."
+        pattern:
+          spec:
+            =(ephemeralContainers):
+              - =(securityContext):
+                  =(privileged): "false"
+            =(initContainers):
+              - =(securityContext):
+                  =(privileged): "false"
+            containers:
+              - =(securityContext):
+                  =(privileged): "false"

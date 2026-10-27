@@ -1,0 +1,37 @@
+# Dans le namespace de l'application, seules les images des registres approuvés sont
+# acceptées : la nôtre (nesrix/), les images officielles utilisées (redis, mariadb),
+# l'exporter MariaDB (prom/) et les outils des opérateurs (mariadb-operator, Flagger).
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: registres-approuves
+  annotations:
+    policies.kyverno.io/title: Registres d'images approuvés
+    policies.kyverno.io/description: >-
+      Refuse les pods du namespace tomtroc dont une image ne vient pas d'un registre
+      approuvé.
+spec:
+  # si Kyverno ne répond pas (redémarrage, nœud saturé), la création est acceptée au
+  # lieu d'être refusée : la disponibilité du cluster passe avant le contrôle (journal)
+  failurePolicy: Ignore
+  background: true
+  rules:
+    - name: images-approuvees
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: [tomtroc]
+      validate:
+        failureAction: Enforce
+        message: >-
+          Image refusée : registres autorisés dans tomtroc = nesrix/, redis, mariadb,
+          prom/, ghcr.io/mariadb-operator/, ghcr.io/fluxcd/.
+        pattern:
+          spec:
+            =(ephemeralContainers):
+              - image: "nesrix/* | redis:* | mariadb:* | prom/* | ghcr.io/mariadb-operator/* | ghcr.io/fluxcd/*"
+            =(initContainers):
+              - image: "nesrix/* | redis:* | mariadb:* | prom/* | ghcr.io/mariadb-operator/* | ghcr.io/fluxcd/*"
+            containers:
+              - image: "nesrix/* | redis:* | mariadb:* | prom/* | ghcr.io/mariadb-operator/* | ghcr.io/fluxcd/*"

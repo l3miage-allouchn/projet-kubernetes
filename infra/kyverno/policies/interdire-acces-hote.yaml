@@ -1,0 +1,51 @@
+# Un pod qui partage le réseau ou les processus du nœud (hostNetwork, hostPID, hostIPC)
+# ou qui monte un dossier du nœud (hostPath) peut en sortir facilement : interdit,
+# sauf pour les outils qui en ont réellement besoin :
+#  - monitoring : node-exporter lit les métriques du nœud ;
+#  - local-path-* : le provisioner crée les volumes dans un dossier du nœud ;
+#  - kube-system : réseau (kindnet, kube-proxy), etcd, driver CSI NFS.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: interdire-acces-hote
+  annotations:
+    policies.kyverno.io/title: Accès à l'hôte interdit
+spec:
+  # si Kyverno ne répond pas (redémarrage, nœud saturé), la création est acceptée au
+  # lieu d'être refusée : la disponibilité du cluster passe avant le contrôle (journal)
+  failurePolicy: Ignore
+  background: true
+  rules:
+    - name: pas-de-namespaces-hote
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+      exclude:
+        any:
+          - resources:
+              namespaces: [monitoring, local-path-helm, local-path-storage, kube-system]
+      validate:
+        failureAction: Enforce
+        message: "hostNetwork, hostPID et hostIPC sont interdits."
+        pattern:
+          spec:
+            =(hostNetwork): "false"
+            =(hostPID): "false"
+            =(hostIPC): "false"
+    - name: pas-de-hostpath
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+      exclude:
+        any:
+          - resources:
+              namespaces: [monitoring, local-path-helm, local-path-storage, kube-system]
+      validate:
+        failureAction: Enforce
+        message: "Les volumes hostPath (dossier du nœud) sont interdits."
+        pattern:
+          spec:
+            =(volumes):
+              - X(hostPath): "null"
