@@ -23,9 +23,9 @@
                 <?php foreach ($books as $book): ?>
                     <tr>
                         <td>
-                            <img src="/tomtroc/public/<?= htmlspecialchars($book->getImage() ?? 'images/default-book.svg') ?>" alt="" class="library__photo" width="78" height="78">
+                            <img src="<?= BASE_URL ?>/<?= htmlspecialchars($book->getImage() ?? 'images/default-book.svg') ?>" alt="" class="library__photo" width="78" height="78">
                         </td>
-                        <td><a href="/tomtroc/public/livre/<?= $book->getId() ?>" class="library__link"><?= htmlspecialchars($book->getTitle()) ?></a></td>
+                        <td><a href="<?= BASE_URL ?>/livre/<?= $book->getId() ?>" class="library__link"><?= htmlspecialchars($book->getTitle()) ?></a></td>
                         <td><?= htmlspecialchars($book->getAuthor()) ?></td>
                         <td>
                             <?php // description coupée proprement (mb_ : ne casse pas les accents) ?>
@@ -41,8 +41,8 @@
                             </td>
                             <td>
                                 <div class="library__actions">
-                                    <a href="/tomtroc/public/livre/<?= $book->getId() ?>/modifier" class="library__edit">Éditer</a>
-                                    <form method="post" action="/tomtroc/public/livre/<?= $book->getId() ?>/supprimer"
+                                    <a href="<?= BASE_URL ?>/livre/<?= $book->getId() ?>/modifier" class="library__edit">Éditer</a>
+                                    <form method="post" action="<?= BASE_URL ?>/livre/<?= $book->getId() ?>/supprimer"
                                           class="js-confirm-delete"
                                           data-confirm="Voulez-vous vraiment supprimer « <?= htmlspecialchars($book->getTitle()) ?> » ? Cette action est définitive.">
                                         <button type="submit" class="library__delete">Supprimer</button>

@@ -1,14 +1,14 @@
 <?php require __DIR__ . '/../partials/header.php'; ?>
 
 <main class="book-form-page">
-    <a href="/tomtroc/public/mon-compte" class="back-link">← retour</a>
+    <a href="<?= BASE_URL ?>/mon-compte" class="back-link">← retour</a>
 
     <h1 class="book-form-page__title"><?= $book->getId() === null ? 'Ajouter un livre' : 'Modifier les informations' ?></h1>
 
     <form method="post" enctype="multipart/form-data" class="panel book-form">
         <div class="book-form__photo">
             <p class="form-label">Photo</p>
-            <img src="/tomtroc/public/<?= htmlspecialchars($book->getImage() ?? 'images/default-book.svg') ?>" alt="Couverture actuelle du livre" id="image-preview" class="book-form__image" width="488" height="488">
+            <img src="<?= BASE_URL ?>/<?= htmlspecialchars($book->getImage() ?? 'images/default-book.svg') ?>" alt="Couverture actuelle du livre" id="image-preview" class="book-form__image" width="488" height="488">
             <label for="image" class="book-form__photo-link">Modifier la photo</label>
             <input type="file" id="image" name="image" class="visually-hidden" accept="image/jpeg,image/png,image/webp">
         </div>
@@ -46,6 +46,6 @@
     </form>
 </main>
 
-<script src="/tomtroc/public/js/image-preview.js"></script>
+<script src="<?= BASE_URL ?>/js/image-preview.js"></script>
 
 <?php require __DIR__ . '/../partials/footer.php'; ?>

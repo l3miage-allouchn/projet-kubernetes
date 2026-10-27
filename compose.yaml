@@ -1,0 +1,47 @@
+# Test local de l'image avant Kubernetes : docker compose up --build
+# puis http://localhost:8080 (mots de passe de test uniquement)
+services:
+  db:
+    image: mariadb:11.4
+    environment:
+      MARIADB_DATABASE: tomtroc
+      MARIADB_USER: tomtroc
+      MARIADB_PASSWORD: tomtroc
+      MARIADB_ROOT_PASSWORD: root
+    volumes:
+      - db-data:/var/lib/mysql
+      # exécuté au premier démarrage, quand la base est vide
+      - ./app/sql/tomtroc.sql:/docker-entrypoint-initdb.d/tomtroc.sql:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      retries: 20
+
+  redis:
+    image: redis:7.4-alpine
+
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: tomtroc:dev
+    ports:
+      - "8080:8080"
+    environment:
+      DB_HOST: db
+      DB_NAME: tomtroc
+      DB_USER: tomtroc
+      DB_PASSWORD: tomtroc
+      SESSION_SAVE_HANDLER: redis
+      SESSION_SAVE_PATH: tcp://redis:6379
+    volumes:
+      - uploads:/var/www/html/public/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+volumes:
+  db-data:
+  uploads:

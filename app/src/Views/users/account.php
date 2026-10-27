@@ -44,7 +44,7 @@
     ?>
 </main>
 
-<script src="/tomtroc/public/js/avatar-upload.js"></script>
-<script src="/tomtroc/public/js/confirm-delete.js"></script>
+<script src="<?= BASE_URL ?>/js/avatar-upload.js"></script>
+<script src="<?= BASE_URL ?>/js/confirm-delete.js"></script>
 
 <?php require __DIR__ . '/../partials/footer.php'; ?>

@@ -6,7 +6,7 @@ class MessageController
     public function inbox(): void
     {
         if (!isset($_SESSION['user_id'])) {
-            header('Location: /tomtroc/public/connexion');
+            header('Location: ' . BASE_URL . '/connexion');
             return;
         }
 
@@ -23,7 +23,7 @@ class MessageController
     public function conversation(int $otherUserId): void
     {
         if (!isset($_SESSION['user_id'])) {
-            header('Location: /tomtroc/public/connexion');
+            header('Location: ' . BASE_URL . '/connexion');
             return;
         }
 
@@ -34,7 +34,7 @@ class MessageController
 
         // interlocuteur inexistant, ou on essaie de s'écrire à soi-même
         if ($otherUser === null || $otherUserId === $currentUserId) {
-            header('Location: /tomtroc/public/messagerie');
+            header('Location: ' . BASE_URL . '/messagerie');
             return;
         }
 
@@ -52,7 +52,7 @@ class MessageController
                 $messageManager->create($message);
             }
 
-            header('Location: /tomtroc/public/messagerie/' . $otherUserId);
+            header('Location: ' . BASE_URL . '/messagerie/' . $otherUserId);
             return;
         }
 

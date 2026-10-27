@@ -1,0 +1,139 @@
+# Journal du projet Kubernetes — TomTroc
+
+Ce journal note les décisions, les problèmes rencontrés et les commandes importantes, étape par étape.
+
+## Environnement
+
+- MacBook Air, puce Apple : `uname -m` → `arm64`
+- Docker Desktop 29.4.2 (`linux/arm64`), Kubernetes v1.34.3 provisionné par kind :
+  `desktop-control-plane`, `desktop-worker`, `desktop-worker2` (contexte `docker-desktop`)
+- Helm : seule la release `headlamp` existait au départ (`helm list -A`)
+
+```bash
+kubectl config current-context
+kubectl get nodes -o wide
+helm list -A
+```
+
+---
+
+## Étape 1 — Image Docker, docker compose, registry
+
+### Décision : URL de base dans une constante `BASE_URL`
+
+Le code contenait `/tomtroc/public/` écrit en dur 70 fois dans 17 fichiers (redirections
+`header('Location: ...')` dans les contrôleurs, liens `href`/`src` dans les vues).
+Deux possibilités :
+
+1. copier le code dans `/var/www/html/tomtroc` pour garder ces URL telles quelles ;
+2. remplacer le préfixe par une constante.
+
+Choix : **la constante `BASE_URL`**, définie dans `app/public/index.php` à partir du dossier
+de `index.php` (`dirname($_SERVER['SCRIPT_NAME'])`). Elle vaut automatiquement :
+
+- `/tomtroc/public` avec XAMPP (le projet d'origine marche toujours) ;
+- `""` dans le conteneur, où le site est servi à la racine (`http://hote/livres`).
+
+C'est plus propre pour l'Ingress (pas de `/tomtroc/public` dans les URL publiques) et
+aucune variable d'environnement n'est nécessaire. Remplacements effectués :
+
+- contrôleurs : `'Location: /tomtroc/public/x'` → `'Location: ' . BASE_URL . '/x'`
+- vues : `"/tomtroc/public/x"` → `"<?= BASE_URL ?>/x"`
+- `header.php` : `$currentPath` est calculé sans `BASE_URL`, les comparaisons du menu
+  utilisent donc `'/livre'`, `'/mon-compte'`, etc.
+
+### Décision : `config.php` lu depuis les variables d'environnement
+
+`docker/config.php` remplace le `config.php` local dans l'image. Il lit `DB_HOST`,
+`DB_NAME`, `DB_USER` et `DB_PASSWORD` avec `getenv()`. Dans Kubernetes, ces variables
+viendront d'une ConfigMap (hôte, nom de base) et d'un Secret (utilisateur, mot de passe).
+Le code de l'application (`Database.php`) n'a pas changé.
+
+### Décision : sessions dans Redis
+
+Avec plusieurs réplicas, une session stockée en fichier n'existe que dans le pod qui l'a
+créée. Deux solutions :
+
+| | Sticky sessions (Traefik) | Redis |
+|---|---|---|
+| Principe | un cookie colle l'utilisateur à un pod | toutes les sessions dans un Redis partagé |
+| Pod supprimé / HPA scale-down / canary | l'utilisateur est **déconnecté** | rien ne se passe |
+| Répartition de charge | déséquilibrée | égale |
+| Coût | aucun composant en plus | un pod Redis |
+
+Choix : **Redis**. Les tests de haute dispo, le HPA, l'A/B testing et le canary Flagger
+déplacent les utilisateurs entre pods : avec des sticky sessions ils seraient déconnectés.
+
+Mise en œuvre sans toucher au code : extension PHP `redis` dans l'image et, dans
+`docker/php.ini`, `session.save_handler = ${SESSION_SAVE_HANDLER}` et
+`session.save_path = "${SESSION_SAVE_PATH}"`. PHP remplace `${...}` par les variables
+d'environnement. Valeurs par défaut de l'image : `files` + `/tmp` ; pour Redis :
+`redis` + `tcp://redis:6379`.
+
+### Le Dockerfile (`docker/Dockerfile`)
+
+- base `php:8.3-apache-bookworm`, extensions `pdo_mysql` et `redis`
+- `mod_rewrite` activé, `AllowOverride All` pour que le `.htaccess` soit lu
+- `DocumentRoot` = `/var/www/html/public` : `src/` et `config.php` ne sont pas accessibles
+  depuis le web (vérifié : 404)
+- PHP désactivé dans `public/uploads/` (`php_admin_flag engine off`) : un fichier `.php`
+  envoyé ne peut pas être exécuté
+- `php.ini-production` + `upload_max_filesize = 4M` : le code refuse les images > 2 Mo avec
+  un message clair, PHP doit donc accepter un peu plus pour que ce message s'affiche
+- **non-root** : `USER www-data` (uid 33). Un utilisateur non-root ne peut pas ouvrir un
+  port < 1024, Apache écoute donc sur **8080**. Le code appartient à root (lecture seule pour
+  www-data) ; seul `public/uploads/` est accessible en écriture.
+- `.dockerignore` en liste blanche : seuls `docker/`, `app/src/` et `app/public/` sont envoyés
+  au build (pas de `.git`, de `config.php` local ni d'uploads)
+
+### Problème rencontré : `docker-credential-desktop` introuvable
+
+```
+error getting credentials - err: exec: "docker-credential-desktop": executable file not found in $PATH
+```
+
+`~/.docker/config.json` contient `"credsStore": "desktop"`, mais le dossier de Docker Desktop
+n'était pas dans le `PATH`. Solution (à mettre dans `~/.zshrc`) :
+
+```bash
+export PATH="/Applications/Docker.app/Contents/Resources/bin:$PATH"
+```
+
+### Test avec docker compose (`compose.yaml`)
+
+Trois services : `db` (`mariadb:11.4`, importe `app/sql/tomtroc.sql` via
+`/docker-entrypoint-initdb.d/` au premier démarrage), `redis` (`redis:7.4-alpine`) et `app`.
+
+```bash
+docker compose up -d --build
+docker compose ps
+# http://localhost:8080  —  nathalie@mail.com / password123
+```
+
+Résultats des tests :
+
+| Test | Résultat |
+|---|---|
+| accueil, CSS, page inconnue | 200, 200, 404 |
+| connexion → Mon compte → Messagerie | session conservée |
+| contenu de la session dans Redis | `user_id\|i:1;user_pseudo\|s:9:"Nathalire";` |
+| ajout d'un livre avec image | fichier dans `uploads/books/`, servi en 200 |
+| fichier `.php` dans uploads | renvoyé en texte, non exécuté |
+| utilisateur du conteneur | `uid=33(www-data)` |
+
+```bash
+docker compose exec redis redis-cli --scan --pattern 'PHPREDIS_SESSION:*'
+docker compose exec app id
+```
+
+### Build multi-architecture
+
+Le driver `docker` par défaut ne produit qu'une architecture. On crée un builder
+`docker-container` ; l'architecture amd64 est émulée par QEMU (build complet : ~1 min 40).
+
+```bash
+docker buildx create --name multiarch --driver docker-container --bootstrap
+docker buildx build --builder multiarch --platform linux/amd64,linux/arm64 \
+  -f docker/Dockerfile -t <utilisateur>/tomtroc:1.0.0 --push .
+docker buildx imagetools inspect <utilisateur>/tomtroc:1.0.0
+```

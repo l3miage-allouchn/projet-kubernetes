@@ -3,9 +3,9 @@
 // variables attendues : $book (le livre) et $owners (les propriétaires, rangés par id)
 $owner = $owners[$book->getUserId()] ?? null;
 ?>
-<a href="/tomtroc/public/livre/<?= $book->getId() ?>" class="book-card">
+<a href="<?= BASE_URL ?>/livre/<?= $book->getId() ?>" class="book-card">
     <div class="book-card__visual">
-        <img src="/tomtroc/public/<?= htmlspecialchars($book->getImage() ?? 'images/default-book.svg') ?>" alt="" class="book-card__image">
+        <img src="<?= BASE_URL ?>/<?= htmlspecialchars($book->getImage() ?? 'images/default-book.svg') ?>" alt="" class="book-card__image">
         <?php if ($book->getStatus() !== 'available'): ?>
             <span class="badge badge--unavailable book-card__badge">non dispo.</span>
         <?php endif; ?>

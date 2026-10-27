@@ -8,7 +8,7 @@
             <p class="form-error"><?= htmlspecialchars($error) ?></p>
         <?php endif; ?>
 
-        <form method="post" action="/tomtroc/public/connexion" class="auth__form">
+        <form method="post" action="<?= BASE_URL ?>/connexion" class="auth__form">
             <div class="form-field">
                 <label for="email" class="form-label">Adresse email</label>
                 <input type="email" id="email" name="email" class="form-input" value="<?= htmlspecialchars($email) ?>" autocomplete="email" required>
@@ -22,7 +22,7 @@
             <button type="submit" class="button button--block">Se connecter</button>
         </form>
 
-        <p class="auth__switch">Pas de compte ? <a href="/tomtroc/public/inscription">Inscrivez-vous</a></p>
+        <p class="auth__switch">Pas de compte ? <a href="<?= BASE_URL ?>/inscription">Inscrivez-vous</a></p>
     </div>
 
     <div class="auth__visual"></div>

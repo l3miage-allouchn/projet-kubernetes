@@ -18,10 +18,10 @@
                         $isCurrent = $otherUser !== null && $otherUser->getId() === $contact->getId();
                         ?>
                         <li>
-                            <a href="/tomtroc/public/messagerie/<?= $contact->getId() ?>"
+                            <a href="<?= BASE_URL ?>/messagerie/<?= $contact->getId() ?>"
                                class="conversation-list__item <?= $isCurrent ? 'conversation-list__item--current' : '' ?> <?= $conversation['unreadCount'] > 0 ? 'conversation-list__item--unread' : '' ?>"
                                <?= $isCurrent ? 'aria-current="page"' : '' ?>>
-                                <img src="/tomtroc/public/<?= htmlspecialchars($contact->getAvatar() ?? 'images/default-avatar.svg') ?>" alt="" class="avatar avatar--48">
+                                <img src="<?= BASE_URL ?>/<?= htmlspecialchars($contact->getAvatar() ?? 'images/default-avatar.svg') ?>" alt="" class="avatar avatar--48">
                                 <span class="conversation-list__text">
                                     <span class="conversation-list__top">
                                         <span class="conversation-list__name"><?= htmlspecialchars($contact->getPseudo()) ?></span>
@@ -45,8 +45,8 @@
                 <p class="thread__placeholder">Sélectionnez une conversation pour afficher les messages.</p>
             <?php else: ?>
                 <h2 class="thread__header">
-                    <a href="/tomtroc/public/profil/<?= $otherUser->getId() ?>" class="thread__contact">
-                        <img src="/tomtroc/public/<?= htmlspecialchars($otherUser->getAvatar() ?? 'images/default-avatar.svg') ?>" alt="" class="avatar avatar--48">
+                    <a href="<?= BASE_URL ?>/profil/<?= $otherUser->getId() ?>" class="thread__contact">
+                        <img src="<?= BASE_URL ?>/<?= htmlspecialchars($otherUser->getAvatar() ?? 'images/default-avatar.svg') ?>" alt="" class="avatar avatar--48">
                         <?= htmlspecialchars($otherUser->getPseudo()) ?>
                     </a>
                 </h2>
@@ -62,7 +62,7 @@
                                 <li class="message <?= $isMine ? 'message--mine' : 'message--theirs' ?>">
                                     <p class="message__meta">
                                         <?php if (!$isMine): ?>
-                                            <img src="/tomtroc/public/<?= htmlspecialchars($otherUser->getAvatar() ?? 'images/default-avatar.svg') ?>" alt="" class="avatar avatar--24">
+                                            <img src="<?= BASE_URL ?>/<?= htmlspecialchars($otherUser->getAvatar() ?? 'images/default-avatar.svg') ?>" alt="" class="avatar avatar--24">
                                         <?php endif; ?>
                                         <span class="visually-hidden"><?= $isMine ? 'Vous' : htmlspecialchars($otherUser->getPseudo()) ?>, le</span>
                                         <?= $message->getCreatedAt()->format('d.m H:i') ?>

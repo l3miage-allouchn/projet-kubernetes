@@ -8,7 +8,7 @@ class UserController
         $user = $userManager->findById($id);
 
         if ($user === null) {
-            header('Location: /tomtroc/public/livres');
+            header('Location: ' . BASE_URL . '/livres');
             return;
         }
 
@@ -21,7 +21,7 @@ class UserController
     public function account(): void
     {
         if (!isset($_SESSION['user_id'])) {
-            header('Location: /tomtroc/public/connexion');
+            header('Location: ' . BASE_URL . '/connexion');
             return;
         }
 
@@ -70,7 +70,7 @@ class UserController
                     // le pseudo est aussi gardé en session : on le met à jour
                     $_SESSION['user_pseudo'] = $user->getPseudo();
 
-                    header('Location: /tomtroc/public/mon-compte');
+                    header('Location: ' . BASE_URL . '/mon-compte');
                     return;
                 } catch (RuntimeException $exception) {
                     $error = $exception->getMessage();

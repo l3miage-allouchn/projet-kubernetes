@@ -8,7 +8,7 @@
             <p class="form-error"><?= htmlspecialchars($error) ?></p>
         <?php endif; ?>
 
-        <form method="post" action="/tomtroc/public/inscription" class="auth__form">
+        <form method="post" action="<?= BASE_URL ?>/inscription" class="auth__form">
             <div class="form-field">
                 <label for="pseudo" class="form-label">Pseudo</label>
                 <input type="text" id="pseudo" name="pseudo" class="form-input" value="<?= htmlspecialchars($pseudo) ?>" autocomplete="username" required>
@@ -29,7 +29,7 @@
             <button type="submit" class="button button--block">S'inscrire</button>
         </form>
 
-        <p class="auth__switch">Déjà inscrit ? <a href="/tomtroc/public/connexion">Connectez-vous</a></p>
+        <p class="auth__switch">Déjà inscrit ? <a href="<?= BASE_URL ?>/connexion">Connectez-vous</a></p>
     </div>
 
     <div class="auth__visual"></div>

@@ -1,0 +1,6 @@
+# on n'envoie au build que ce dont l'image a besoin
+*
+!docker/
+!app/src/
+!app/public/
+app/public/uploads/

@@ -4,6 +4,10 @@ session_start();
 
 require_once __DIR__ . '/../src/Core/autoload.php';
 
+// début de toutes les URL du site, déduit du dossier de index.php :
+// "/tomtroc/public" avec XAMPP, "" quand le site est à la racine (Docker)
+define('BASE_URL', rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'])), '/'));
+
 $router = new Router();
 
 $router->add('GET', '/', function () {
@@ -85,10 +89,9 @@ $router->add('GET', '/confidentialite', function () {
     (new PageController())->privacy();
 });
 
-$basePath = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME']));
 $requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 
-$uri = substr($requestUri, strlen($basePath));
+$uri = substr($requestUri, strlen(BASE_URL));
 if ($uri === '' || $uri === false) {
     $uri = '/';
 }

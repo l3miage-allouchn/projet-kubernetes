@@ -5,7 +5,7 @@ class BookController
     public function add(): void
     {
         if (!isset($_SESSION['user_id'])) {
-            header('Location: /tomtroc/public/connexion');
+            header('Location: ' . BASE_URL . '/connexion');
             return;
         }
 
@@ -35,7 +35,7 @@ class BookController
                     $bookManager = new BookManager();
                     $bookManager->create($book);
 
-                    header('Location: /tomtroc/public/mon-compte');
+                    header('Location: ' . BASE_URL . '/mon-compte');
                     return;
                 } catch (RuntimeException $exception) {
                     // image refusée : on réaffiche le formulaire avec le message
@@ -50,7 +50,7 @@ class BookController
     public function edit(int $id): void
     {
         if (!isset($_SESSION['user_id'])) {
-            header('Location: /tomtroc/public/connexion');
+            header('Location: ' . BASE_URL . '/connexion');
             return;
         }
 
@@ -58,7 +58,7 @@ class BookController
         $book = $bookManager->findById($id);
 
         if ($book === null || $book->getUserId() !== $_SESSION['user_id']) {
-            header('Location: /tomtroc/public/mon-compte');
+            header('Location: ' . BASE_URL . '/mon-compte');
             return;
         }
 
@@ -90,7 +90,7 @@ class BookController
 
                     $bookManager->update($book);
 
-                    header('Location: /tomtroc/public/mon-compte');
+                    header('Location: ' . BASE_URL . '/mon-compte');
                     return;
                 } catch (RuntimeException $exception) {
                     $error = $exception->getMessage();
@@ -104,7 +104,7 @@ class BookController
     public function delete(int $id): void
     {
         if (!isset($_SESSION['user_id'])) {
-            header('Location: /tomtroc/public/connexion');
+            header('Location: ' . BASE_URL . '/connexion');
             return;
         }
 
@@ -119,7 +119,7 @@ class BookController
             $bookManager->delete($id);
         }
 
-        header('Location: /tomtroc/public/mon-compte');
+        header('Location: ' . BASE_URL . '/mon-compte');
     }
 
     public function list(): void
@@ -141,7 +141,7 @@ class BookController
         $book = $bookManager->findById($id);
 
         if ($book === null) {
-            header('Location: /tomtroc/public/livres');
+            header('Location: ' . BASE_URL . '/livres');
             return;
         }
 

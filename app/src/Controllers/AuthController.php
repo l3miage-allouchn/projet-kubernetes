@@ -36,7 +36,7 @@ class AuthController
                 $_SESSION['user_id'] = $user->getId();
                 $_SESSION['user_pseudo'] = $user->getPseudo();
 
-                header('Location: /tomtroc/public/');
+                header('Location: ' . BASE_URL . '/');
                 return;
             }
         }
@@ -66,7 +66,7 @@ class AuthController
                     $_SESSION['user_id'] = $user->getId();
                     $_SESSION['user_pseudo'] = $user->getPseudo();
 
-                    header('Location: /tomtroc/public/');
+                    header('Location: ' . BASE_URL . '/');
                     return;
                 }
             }
@@ -78,6 +78,6 @@ class AuthController
     public function logout(): void
     {
         session_destroy();
-        header('Location: /tomtroc/public/');
+        header('Location: ' . BASE_URL . '/');
     }
 }
