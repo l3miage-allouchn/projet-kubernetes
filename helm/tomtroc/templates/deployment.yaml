@@ -36,6 +36,8 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: {{ $v.app }}
+        # label stable : Flagger renomme app.kubernetes.io/name en "-primary", pas celui-ci
+        app.kubernetes.io/component: web
       annotations:
         # change quand les données de la ConfigMap changent (pas ses labels) : les pods
         # sont alors recréés pour relire les variables
@@ -57,6 +59,8 @@ spec:
       # répartir les pods sur les nœuds (règle obligatoire : avec ScheduleAnyway, les deux
       # pods se sont retrouvés sur le même worker). nodeTaintsPolicy: Honor ignore les
       # nœuds avec un taint : le control-plane, et un worker en panne.
+      # matchLabelKeys : chaque version (ReplicaSet) est répartie séparément, ce qui
+      # fonctionne aussi pour les pods "primary" et "canary" créés par Flagger.
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname
@@ -64,7 +68,9 @@ spec:
           nodeTaintsPolicy: Honor
           labelSelector:
             matchLabels:
-              app.kubernetes.io/name: {{ $v.app }}
+              app.kubernetes.io/component: web
+          matchLabelKeys:
+            - pod-template-hash
       {{- end }}
 
       containers:

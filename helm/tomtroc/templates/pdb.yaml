@@ -7,7 +7,8 @@ metadata:
     {{- include "tomtroc.labels" . | nindent 4 }}
 spec:
   minAvailable: {{ .Values.pdb.minAvailable }}
+  # avec Flagger, la version en production est dans les pods "tomtroc-primary"
   selector:
     matchLabels:
-      {{- include "tomtroc.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/name: {{ if .Values.canary.enabled }}tomtroc-primary{{ else }}tomtroc{{ end }}
 {{- end }}

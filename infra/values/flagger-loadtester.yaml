@@ -1,0 +1,10 @@
+# flagger-loadtester (chart flagger/loadtester) : envoie du trafic pendant l'analyse
+# d'un canary. Sans trafic, Flagger n'aurait aucune métrique à juger.
+replicaCount: 1
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 32Mi
+  limits:
+    memory: 128Mi

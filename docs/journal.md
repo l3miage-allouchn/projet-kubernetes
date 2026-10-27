@@ -866,3 +866,141 @@ le dossier TomTroc, une seule source de données (Prometheus).
 | Prometheus | ~363 Mi |
 | Grafana (3 conteneurs) | ~399 Mi |
 | Nœuds au total | ~5,1 Gi sur 7,75 Gi |
+
+---
+
+## Étape 9 — Déploiement progressif (canary) avec Flagger
+
+Fichiers : `infra/values/flagger.yaml`, `infra/values/flagger-loadtester.yaml`,
+`infra/flagger/install.sh`, `helm/tomtroc/templates/canary.yaml` (chart 0.4.0,
+appVersion 1.1.0), `docker/broken/` (image de test défectueuse).
+
+```bash
+./infra/flagger/install.sh
+helm upgrade tomtroc helm/tomtroc -n tomtroc -f helm/tomtroc/values-prod.yaml
+kubectl -n tomtroc get canary -w
+```
+
+### Principe
+
+Flagger surveille le Deployment `tomtroc`. Quand son modèle de pod change (image,
+configuration), il crée une version **canary** qui reçoit un peu de trafic (+10 % toutes
+les 30 s, jusqu'à 50 %). À chaque étape, il lit dans Prometheus les métriques Traefik
+**du canary seulement** :
+
+- taux de succès (réponses non 5xx) ≥ 99 % ;
+- temps de réponse p99 ≤ 500 ms.
+
+Tout va bien → **promotion** (la nouvelle version devient la production). 3 mesures en
+échec → **retour en arrière** automatique.
+
+### Installation
+
+- Chart `flagger/flagger` 1.45.0 dans le namespace `traefik`, `meshProvider: traefik`,
+  `metricsServer` = le Prometheus de l'étape 8.
+- Chart `flagger/loadtester` 0.39.0 dans `tomtroc` : envoie du trafic pendant l'analyse
+  (sans trafic, pas de métriques). Le trafic passe par Traefik (`hey -host
+  tomtroc.localhost https://traefik.traefik.svc.cluster.local/livres`), sinon Traefik ne
+  mesure rien. Vérifié depuis le pod : 20 × 200.
+
+### Ce que Flagger crée (objet `Canary`, `canary.enabled: true` dans `values-prod.yaml`)
+
+| Objet | Rôle |
+|---|---|
+| Deployment `tomtroc-primary` + HPA | la version en production (2 à 4 pods) |
+| Deployment `tomtroc` | devient le canary : 0 pod au repos |
+| Services `tomtroc` (vers primary), `tomtroc-primary`, `tomtroc-canary` | |
+| TraefikService `tomtroc` | répartition pondérée primary / canary |
+| ConfigMap `tomtroc-config-primary`, Secret `mariadb-credentials-primary` | copies (`configTracking`) : un changement de configuration passe aussi par l'analyse |
+
+### Adaptations de la chart
+
+- **Routage** : l'IngressRoute vise le TraefikService `tomtroc` de Flagger. Lancer un
+  canary ne fait que changer des poids : plus de remplacement Ingress/IngressRoute (cause
+  des erreurs au démarrage de l'A/B testing, étape 7).
+- **Service `tomtroc`** : créé et géré par Flagger, la chart ne le génère plus.
+- **PDB** : il vise `app.kubernetes.io/name: tomtroc-primary` (Flagger renomme ce label
+  dans les pods qu'il crée).
+- **Répartition des pods** : sélection par un label stable,
+  `app.kubernetes.io/component: web` (Flagger ne le renomme pas), et
+  `matchLabelKeys: [pod-template-hash]` (chaque version est répartie séparément).
+  Résultat : un pod primary sur chaque worker.
+
+### Passage de l'A/B testing à Flagger sans coupure
+
+Faire tout en une fois aurait fait pointer l'IngressRoute vers un TraefikService que
+Flagger n'a pas encore créé (environ 30 s d'erreurs). En deux phases :
+
+1. Canary activé **en gardant l'A/B testing** (`-f values-prod.yaml -f values-ab.yaml`).
+   Flagger crée `tomtroc-primary` et son TraefikService et fait pointer le Service
+   `tomtroc` vers primary ; le trafic passe encore par le TraefikService de l'A/B, qui
+   vise ce Service. Le Service porte `helm.sh/resource-policy: keep` dans cette révision.
+2. A/B désactivé (`-f values-prod.yaml`) : l'IngressRoute est simplement modifiée pour
+   viser le TraefikService de Flagger, qui existe déjà. Le Service `tomtroc` n'est plus
+   dans la chart mais Helm ne le supprime pas (`keep`).
+
+Mesures sous trafic continu : phase 1 **1 200 / 1 200 réponses 200**, phase 2
+**600 / 600**.
+
+### Scénario 1 : promotion de la 1.1.0
+
+```bash
+helm upgrade tomtroc helm/tomtroc -n tomtroc -f helm/tomtroc/values-prod.yaml --set image.tag=1.1.0
+```
+
+| Heure | Étape |
+|---|---|
+| 14:18:48 | nouvelle révision détectée |
+| 14:19:18 | canary à 10 % |
+| 14:19:48 | pause : « no values found » (pas encore de mesure dans Prometheus pour le canary) |
+| 14:20:18 → 14:21:48 | 20 %, 30 %, 40 %, 50 % |
+| 14:23:18 | promotion terminée : `tomtroc-primary` en 1.1.0 |
+
+Ensuite, `appVersion` de la chart passée à 1.1.0 : sans cela, un `helm upgrade` sans
+`--set` aurait redemandé la 1.0.2. Vérifié : ce `helm upgrade` ne modifie pas le
+Deployment (génération inchangée), donc pas de canary.
+
+### Scénario 2 : retour en arrière automatique
+
+Image `nesrix/tomtroc:1.1.1-broken` : la 1.1.0 + un fichier PHP exécuté avant chaque page
+(`auto_prepend_file`) qui renvoie 500 une fois sur deux. `/health.php` reste correct :
+les pods sont « prêts », c'est l'analyse des métriques qui doit détecter le défaut. Le
+code de l'application n'est pas modifié.
+
+```bash
+helm upgrade tomtroc helm/tomtroc -n tomtroc -f helm/tomtroc/values-prod.yaml --set image.tag=1.1.1-broken
+```
+
+| Heure | Étape |
+|---|---|
+| 14:31:18 | canary à 10 % |
+| 14:32:18 | pause : taux de succès **38,76 % < 99 %** |
+| 14:32:48 | pause : taux de succès **36,36 % < 99 %** |
+| 14:33:18 | 3 échecs : **retour en arrière**, canary à 0 pod |
+
+Pendant ce temps, la production est restée en 1.1.0. Visiteurs sur `/livres` : 32
+requêtes sur 505 envoyées à la version cassée, dont **22 erreurs 500 (~4 %) pendant
+2 min 30**. Une mise à jour directe aurait mis **~50 % des requêtes** en erreur pour tous
+les visiteurs.
+
+### Rollback Helm
+
+Après l'échec, Helm considère toujours `1.1.1-broken` comme la version voulue
+(révision 12). Retour à la révision précédente :
+
+```bash
+helm history tomtroc -n tomtroc
+helm rollback tomtroc 11 -n tomtroc     # révision 13 : "Rollback to 11"
+```
+
+Le Deployment `tomtroc` demande de nouveau la 1.1.0. Flagger ne relance pas d'analyse :
+l'empreinte du modèle de pod (`6d8f8cf98f`) est la même que celle de la version déjà en
+production (`lastPromotedSpec`). Le statut du Canary reste `Failed` (il décrit la
+dernière analyse) jusqu'au prochain vrai changement. Site : 200, `x-app-version: 1.1.0`.
+
+### Amélioration du script cert-manager
+
+`--wait-for-jobs` ajouté au `helm upgrade` de cert-manager : il attend le Job
+`startupapicheck`, qui ne se termine que lorsque le webhook accepte les objets. Sur un
+cluster neuf, le `kubectl apply` des émetteurs pouvait sinon échouer quelques secondes
+trop tôt.

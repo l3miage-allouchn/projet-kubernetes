@@ -1,5 +1,5 @@
-{{- /* pendant un A/B testing, l'IngressRoute de ab-testing.yaml prend le relais */ -}}
-{{- if and .Values.ingress.enabled (not .Values.abTesting.enabled) }}
+{{- /* avec l'A/B testing ou Flagger, une IngressRoute Traefik prend le relais */ -}}
+{{- if and .Values.ingress.enabled (not .Values.abTesting.enabled) (not .Values.canary.enabled) }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:

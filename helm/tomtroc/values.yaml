@@ -79,6 +79,28 @@ abTesting:
     b: 20
   cookieName: tomtroc_variant
 
+# --- Déploiement progressif (canary) avec Flagger ------------------------------------
+# Une nouvelle version (changement de image.tag) reçoit peu à peu du trafic ; Flagger
+# mesure son taux de succès et son temps de réponse (métriques Traefik dans Prometheus),
+# puis la promeut ou revient en arrière tout seul.
+# Nécessite Flagger et flagger-loadtester (infra/flagger/install.sh).
+
+canary:
+  enabled: false
+  analysis:
+    interval: 30s
+    stepWeight: 10
+    maxWeight: 50
+    threshold: 3
+    # % minimum de réponses sans erreur 5xx
+    successRateMin: 99
+    # temps de réponse p99 maximum (ms)
+    durationMaxMs: 500
+  loadtester:
+    url: http://flagger-loadtester.tomtroc/
+    # le trafic de test passe par Traefik, avec l'en-tête Host du site
+    traefikUrl: https://traefik.traefik.svc.cluster.local
+
 # --- Sessions (Redis) ---------------------------------------------------------------
 
 redis:

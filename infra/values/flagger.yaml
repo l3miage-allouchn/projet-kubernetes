@@ -1,0 +1,21 @@
+# Flagger (chart flagger/flagger) : déploiement progressif (canary).
+# Il envoie peu à peu du trafic à une nouvelle version, lit les métriques de Traefik
+# dans Prometheus, puis promeut la version ou revient en arrière tout seul.
+
+# Traefik fait la répartition pondérée (Flagger crée un TraefikService)
+meshProvider: traefik
+
+# Prometheus de kube-prometheus-stack (étape 8)
+metricsServer: http://kube-prometheus-stack-prometheus.monitoring:9090
+
+# métriques de Flagger lui-même (état des canary) collectées par Prometheus
+podMonitor:
+  enabled: true
+  honorLabels: true
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 32Mi
+  limits:
+    memory: 128Mi

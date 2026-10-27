@@ -13,6 +13,10 @@ autoscaling:
 pdb:
   enabled: true
 
+# nouvelles versions déployées progressivement par Flagger
+canary:
+  enabled: true
+
 ingress:
   host: tomtroc.localhost
 

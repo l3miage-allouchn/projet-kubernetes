@@ -1,5 +1,14 @@
-{{- /* Un Service par variante (voir deployment.yaml) */ -}}
-{{- $variants := list (dict "name" (include "tomtroc.fullname" .) "app" "tomtroc") }}
+{{- /*
+Un Service par variante (voir deployment.yaml).
+Avec Flagger (canary.enabled), le Service "tomtroc" est créé et géré par Flagger : la
+chart ne le génère plus, sauf pendant le passage depuis l'A/B testing (le TraefikService
+de l'A/B s'en sert encore). Il porte alors resource-policy: keep, pour que Helm ne le
+supprime pas quand il disparaît de la chart.
+*/ -}}
+{{- $variants := list }}
+{{- if or (not .Values.canary.enabled) .Values.abTesting.enabled }}
+{{- $variants = append $variants (dict "name" (include "tomtroc.fullname" .) "app" "tomtroc") }}
+{{- end }}
 {{- if .Values.abTesting.enabled }}
 {{- $variants = append $variants (dict "name" (printf "%s-b" (include "tomtroc.fullname" .)) "app" "tomtroc-b") }}
 {{- end }}
@@ -12,6 +21,10 @@ metadata:
   labels:
     app.kubernetes.io/name: {{ $v.app }}
     {{- include "tomtroc.commonLabels" $ | nindent 4 }}
+  {{- if and $.Values.canary.enabled (eq $v.app "tomtroc") }}
+  annotations:
+    helm.sh/resource-policy: keep
+  {{- end }}
 spec:
   selector:
     app.kubernetes.io/name: {{ $v.app }}

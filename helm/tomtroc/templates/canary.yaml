@@ -1,0 +1,86 @@
+{{- if .Values.canary.enabled }}
+# Déploiement progressif avec Flagger. À partir du Deployment "tomtroc", Flagger crée :
+#  - le Deployment "tomtroc-primary" (la version en production) et son HPA ;
+#  - les Services "tomtroc" (vers primary), "tomtroc-primary" et "tomtroc-canary" ;
+#  - le TraefikService "tomtroc", qui répartit le trafic entre primary et canary.
+# Le Deployment "tomtroc" devient le canary : à 0 pod au repos. Quand son image (ou sa
+# configuration) change, Flagger lui envoie peu à peu du trafic, mesure, puis promeut
+# la nouvelle version ou revient en arrière.
+apiVersion: flagger.app/v1beta1
+kind: Canary
+metadata:
+  name: {{ include "tomtroc.fullname" . }}
+  labels:
+    app.kubernetes.io/name: tomtroc
+    {{- include "tomtroc.commonLabels" . | nindent 4 }}
+spec:
+  provider: traefik
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "tomtroc.fullname" . }}
+  {{- if .Values.autoscaling.enabled }}
+  autoscalerRef:
+    apiVersion: autoscaling/v2
+    kind: HorizontalPodAutoscaler
+    name: {{ include "tomtroc.fullname" . }}
+  {{- end }}
+  # temps maximum pour que les pods du canary soient prêts
+  progressDeadlineSeconds: 300
+  service:
+    port: 80
+    targetPort: http
+  analysis:
+    # une étape toutes les {{ .Values.canary.analysis.interval }} : +{{ .Values.canary.analysis.stepWeight }} % de trafic,
+    # jusqu'à {{ .Values.canary.analysis.maxWeight }} %, puis promotion
+    interval: {{ .Values.canary.analysis.interval }}
+    stepWeight: {{ .Values.canary.analysis.stepWeight }}
+    maxWeight: {{ .Values.canary.analysis.maxWeight }}
+    # nombre de mesures en échec avant le retour en arrière
+    threshold: {{ .Values.canary.analysis.threshold }}
+    # métriques Traefik lues dans Prometheus, sur le trafic du canary uniquement
+    metrics:
+      - name: request-success-rate
+        # % de réponses qui ne sont pas des erreurs 5xx
+        thresholdRange:
+          min: {{ .Values.canary.analysis.successRateMin }}
+        interval: 1m
+      - name: request-duration
+        # temps de réponse p99, en millisecondes
+        thresholdRange:
+          max: {{ .Values.canary.analysis.durationMaxMs }}
+        interval: 1m
+    webhooks:
+      # trafic de test pendant l'analyse, envoyé à travers Traefik (sinon pas de métriques)
+      - name: generation-de-charge
+        type: rollout
+        url: {{ .Values.canary.loadtester.url }}
+        timeout: 5s
+        metadata:
+          type: cmd
+          cmd: "hey -z {{ .Values.canary.analysis.interval }} -q 5 -c 2 -host {{ .Values.ingress.host }} {{ .Values.canary.loadtester.traefikUrl }}/livres"
+{{- if and .Values.ingress.enabled (not .Values.abTesting.enabled) }}
+---
+# Accès public : vers le TraefikService créé par Flagger, dont il fait varier les poids
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ include "tomtroc.fullname" . }}
+  labels:
+    app.kubernetes.io/name: tomtroc
+    {{- include "tomtroc.commonLabels" . | nindent 4 }}
+spec:
+  entryPoints:
+    - {{ .Values.ingress.entrypoint }}
+  routes:
+    - match: Host(`{{ .Values.ingress.host }}`)
+      kind: Rule
+      services:
+        - name: {{ include "tomtroc.fullname" . }}
+          kind: TraefikService
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    secretName: {{ include "tomtroc.fullname" . }}-tls
+  {{- end }}
+{{- end }}
+{{- end }}

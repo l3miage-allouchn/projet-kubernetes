@@ -6,9 +6,12 @@ cd "$(dirname "$0")"
 helm repo add jetstack https://charts.jetstack.io
 helm repo update jetstack
 
+# --wait-for-jobs : attend aussi le Job "startupapicheck" de la chart, qui ne se termine
+# que lorsque le webhook de cert-manager accepte les objets (sinon, sur un cluster neuf,
+# le kubectl apply des émetteurs peut échouer quelques secondes trop tôt)
 helm upgrade --install cert-manager jetstack/cert-manager --version v1.21.3 \
   --namespace cert-manager --create-namespace \
-  -f ../values/cert-manager.yaml --wait
+  -f ../values/cert-manager.yaml --wait --wait-for-jobs
 
 kubectl apply -f issuers.yaml
 kubectl -n cert-manager wait certificate/lab-ca --for=condition=Ready --timeout=120s
