@@ -1,12 +1,25 @@
+{{- /*
+Un Deployment par variante : A (la version normale) et, si l'A/B testing est activé,
+B (abTesting.variantB). Les pods de B ont un autre nom (tomtroc-b) : le Service, le HPA
+et le PDB de A ne les voient pas.
+*/ -}}
+{{- $variants := list (dict "name" (include "tomtroc.fullname" .) "app" "tomtroc" "tag" (include "tomtroc.imageTag" .) "replicas" .Values.replicaCount "hpa" .Values.autoscaling.enabled "spread" .Values.topologySpread.enabled) }}
+{{- if .Values.abTesting.enabled }}
+{{- $variants = append $variants (dict "name" (printf "%s-b" (include "tomtroc.fullname" .)) "app" "tomtroc-b" "tag" .Values.abTesting.variantB.tag "replicas" .Values.abTesting.variantB.replicaCount "hpa" false "spread" false) }}
+{{- end }}
+{{- range $v := $variants }}
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "tomtroc.fullname" . }}
+  name: {{ $v.name }}
   labels:
-    {{- include "tomtroc.labels" . | nindent 4 }}
+    app.kubernetes.io/name: {{ $v.app }}
+    app.kubernetes.io/version: {{ $v.tag | quote }}
+    {{- include "tomtroc.commonLabels" $ | nindent 4 }}
 spec:
-  {{- if not .Values.autoscaling.enabled }}
-  replicas: {{ .Values.replicaCount }}
+  {{- if not $v.hpa }}
+  replicas: {{ $v.replicas }}
   {{- end }}
   revisionHistoryLimit: 3
   # mise à jour sans coupure : un nouveau pod doit être prêt avant qu'un ancien s'arrête
@@ -15,18 +28,19 @@ spec:
     rollingUpdate:
       maxUnavailable: 0
       maxSurge: 1
+  # le sélecteur ne peut plus changer après la création : on n'y met que le nom
   selector:
     matchLabels:
-      {{- include "tomtroc.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/name: {{ $v.app }}
   template:
     metadata:
       labels:
-        {{- include "tomtroc.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/name: {{ $v.app }}
       annotations:
         # change quand la ConfigMap change : les pods sont alors recréés pour la relire
-        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") $ | sha256sum }}
     spec:
-      serviceAccountName: {{ include "tomtroc.fullname" . }}
+      serviceAccountName: {{ include "tomtroc.fullname" $ }}
       automountServiceAccountToken: false
 
       # www-data (uid/gid 33) ; fsGroup : le groupe 33 peut écrire dans le volume des uploads
@@ -38,33 +52,35 @@ spec:
         seccompProfile:
           type: RuntimeDefault
 
-      {{- if .Values.topologySpread.enabled }}
-      # répartir les pods sur les nœuds ; nodeTaintsPolicy: Honor ignore le control-plane
+      {{- if $v.spread }}
+      # répartir les pods sur les nœuds (règle obligatoire : avec ScheduleAnyway, les deux
+      # pods se sont retrouvés sur le même worker). nodeTaintsPolicy: Honor ignore les
+      # nœuds avec un taint : le control-plane, et un worker en panne.
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname
-          whenUnsatisfiable: ScheduleAnyway
+          whenUnsatisfiable: DoNotSchedule
           nodeTaintsPolicy: Honor
           labelSelector:
             matchLabels:
-              {{- include "tomtroc.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/name: {{ $v.app }}
       {{- end }}
 
       containers:
         - name: tomtroc
-          image: "{{ .Values.image.repository }}:{{ include "tomtroc.imageTag" . }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          image: "{{ $.Values.image.repository }}:{{ $v.tag }}"
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
           ports:
             - name: http
               containerPort: 8080
           envFrom:
             - configMapRef:
-                name: {{ include "tomtroc.fullname" . }}-config
+                name: {{ include "tomtroc.fullname" $ }}-config
           env:
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.mariadb.credentialsSecret }}
+                  name: {{ $.Values.mariadb.credentialsSecret }}
                   key: password
 
           # /health.php ne touche ni à la base ni aux sessions : un souci de base ne
@@ -89,8 +105,16 @@ spec:
             timeoutSeconds: 2
             failureThreshold: 3
 
+          # à l'arrêt d'un pod, Kubernetes envoie le signal d'arrêt et retire le pod de
+          # Traefik en même temps : on attend 5 s que Traefik l'ait retiré avant
+          # d'arrêter Apache (sinon des requêtes reçoivent une erreur 502)
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "5"]
+
           resources:
-            {{- toYaml .Values.resources | nindent 12 }}
+            {{- toYaml $.Values.resources | nindent 12 }}
 
           # système de fichiers en lecture seule : seuls les volumes ci-dessous sont modifiables
           securityContext:
@@ -111,10 +135,11 @@ spec:
       volumes:
         - name: uploads
           persistentVolumeClaim:
-            claimName: {{ include "tomtroc.fullname" . }}-uploads
+            claimName: {{ include "tomtroc.fullname" $ }}-uploads
         - name: tmp
           emptyDir: {}
         - name: apache-run
           emptyDir: {}
         - name: apache-lock
           emptyDir: {}
+{{- end }}

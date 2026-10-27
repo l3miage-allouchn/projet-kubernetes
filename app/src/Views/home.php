@@ -6,7 +6,7 @@
             <div class="home-hero__text">
                 <h1 class="home-hero__title">Rejoignez nos lecteurs passionnés</h1>
                 <p class="home-hero__intro">Donnez une nouvelle vie à vos livres en les échangeant avec d'autres amoureux de la lecture. Nous croyons en la magie du partage de connaissances et d'histoires à travers les livres.</p>
-                <a href="<?= BASE_URL ?>/livres" class="button">Découvrir</a>
+                <a href="<?= BASE_URL ?>/livres" class="button">Commencer à échanger</a>
             </div>
             <figure class="home-hero__figure">
                 <img src="<?= BASE_URL ?>/images/hero.jpg" alt="Un libraire lit, assis au milieu des piles de livres de sa boutique" class="home-hero__image" width="404" height="539">

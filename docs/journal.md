@@ -671,3 +671,91 @@ Ordre d'installation complet du projet :
 ./infra/cert-manager/install.sh    # cert-manager et CA du labo
 helm upgrade --install tomtroc helm/tomtroc -n tomtroc --create-namespace -f helm/tomtroc/values-prod.yaml
 ```
+
+---
+
+## Étape 7 — A/B testing avec Traefik
+
+### Deux versions de l'image
+
+| Image | Variante | Changement |
+|---|---|---|
+| `nesrix/tomtroc:1.0.2` | A | en-tête `X-App-Version`, cookie de session `Secure` |
+| `nesrix/tomtroc:1.1.0` | B | 1.0.2 + bouton d'accueil « Commencer à échanger » au lieu de « Découvrir » |
+
+- `X-App-Version` : version passée au build (`--build-arg APP_VERSION=1.0.2`), mise dans
+  une variable d'environnement et renvoyée par Apache (`mod_headers`) :
+  `Header always set X-App-Version "${APP_VERSION}"`. Permet de compter les versions avec
+  curl.
+- Cookie `Secure` (amélioration notée à l'étape 5) : `session.cookie_secure =
+  ${SESSION_COOKIE_SECURE}` dans `docker/php.ini`, `0` par défaut (compose en HTTP), `1`
+  dans la ConfigMap quand l'Ingress est en TLS.
+
+```bash
+docker buildx build --builder multiarch --platform linux/amd64,linux/arm64 \
+  --build-arg APP_VERSION=1.1.0 -f docker/Dockerfile -t nesrix/tomtroc:1.1.0 --push .
+```
+
+### Dans la chart (version 0.2.0, appVersion 1.0.2)
+
+- `deployment.yaml` et `service.yaml` génèrent un objet **par variante** (boucle `range`
+  sur une liste) au lieu de dupliquer le YAML.
+- Les pods de B s'appellent `tomtroc-b` (label `app.kubernetes.io/name`) : le Service, le
+  HPA et le PDB de A ne les voient pas.
+- `ab-testing.yaml` : un **TraefikService pondéré** (`weighted`) entre les Services
+  `tomtroc` et `tomtroc-b`, avec un **cookie sticky**, et une **IngressRoute** qui
+  l'utilise. Un Ingress standard ne peut viser qu'un Service, pas une répartition
+  pondérée : l'Ingress est remplacé par l'IngressRoute pendant le test.
+- `values-ab.yaml` : l'expérience (B = 1.1.0, poids 80/20), ajoutée par-dessus la prod.
+
+```bash
+# démarrer le test
+helm upgrade tomtroc helm/tomtroc -n tomtroc -f helm/tomtroc/values-prod.yaml -f helm/tomtroc/values-ab.yaml
+# arrêter le test
+helm upgrade tomtroc helm/tomtroc -n tomtroc -f helm/tomtroc/values-prod.yaml
+```
+
+### Pourquoi un cookie sticky
+
+En A/B testing, un visiteur doit toujours voir la même variante : sinon l'interface
+change d'une page à l'autre et on ne peut pas attribuer son comportement (clic sur le
+bouton, inscription) à une variante. Traefik tire la variante au sort à la première
+visite, puis pose le cookie `tomtroc_variant` (`HttpOnly`, `Secure`, `SameSite=Lax`).
+
+### Résultats
+
+| Test | Résultat |
+|---|---|
+| 300 requêtes sans cookie | 240 × `1.0.2`, 60 × `1.1.0` (exactement 80/20) |
+| 5 visiteurs avec cookie, 20 pages chacun | chacun reste sur sa variante (4 sur A, 1 sur B) |
+| page d'accueil | A : « Découvrir », B : « Commencer à échanger » |
+
+```bash
+CA=infra/cert-manager/lab-ca.crt
+for i in $(seq 1 300); do curl -s --cacert $CA -D - -o /dev/null https://tomtroc.localhost/health.php \
+  | grep -i x-app-version; done | sort | uniq -c
+kubectl -n tomtroc get ingressroute,traefikservice
+```
+
+### Problèmes trouvés en mesurant (trafic continu pendant les changements)
+
+1. **502 pendant un rolling update** : à l'arrêt d'un pod, Kubernetes envoie le signal
+   d'arrêt et retire le pod de Traefik **en même temps** ; Traefik envoie encore des
+   requêtes à un pod qui s'éteint. Correction : `lifecycle.preStop: sleep 5`.
+   Mesure (400 requêtes pendant un `rollout restart`) : avant, 2 × 502 + 1 × 504 ;
+   après, **400 × 200**.
+2. **Les deux pods sur le même worker** : `whenUnsatisfiable: ScheduleAnyway` n'est
+   qu'une préférence. Passage à `DoNotSchedule` (obligatoire) ; avec
+   `nodeTaintsPolicy: Honor`, un worker en panne (qui reçoit un taint) est exclu du
+   calcul, donc la règle ne bloque pas la reprise après panne.
+3. **Erreurs au démarrage du test** (300 requêtes : 14 × 404, 19 × 503, environ 3 s) :
+   - 503 : l'IngressRoute envoyait déjà 20 % du trafic vers B alors que son pod
+     démarrait (aucun pod prêt = 503 pour Traefik) ;
+   - 404 : pendant le remplacement de l'Ingress par l'IngressRoute.
+
+   Amélioration : passer toujours par IngressRoute + TraefikService (un test = un
+   changement de poids), et démarrer B avec un poids de 0 avant de lui envoyer du
+   trafic. C'est ce que fait Flagger à l'étape 9.
+
+`curl -I` (requête `HEAD`) renvoie 404 : le routeur de TomTroc ne déclare que `GET` et
+`POST`. Ce n'est pas un problème d'infrastructure ; les tests utilisent `GET`.

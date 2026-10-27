@@ -1,4 +1,5 @@
-{{- if .Values.ingress.enabled }}
+{{- /* pendant un A/B testing, l'IngressRoute de ab-testing.yaml prend le relais */ -}}
+{{- if and .Values.ingress.enabled (not .Values.abTesting.enabled) }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:

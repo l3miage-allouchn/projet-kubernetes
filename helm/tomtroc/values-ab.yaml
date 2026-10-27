@@ -1,0 +1,14 @@
+# Expérience A/B, à ajouter par-dessus values-prod.yaml :
+#   helm upgrade tomtroc helm/tomtroc -n tomtroc -f helm/tomtroc/values-prod.yaml -f helm/tomtroc/values-ab.yaml
+# Pour arrêter le test, relancer la même commande sans ce fichier.
+#
+# A = 1.0.2 (bouton "Découvrir"), B = 1.1.0 (bouton "Commencer à échanger")
+
+abTesting:
+  enabled: true
+  variantB:
+    tag: "1.1.0"
+    replicaCount: 1
+  weights:
+    a: 80
+    b: 20

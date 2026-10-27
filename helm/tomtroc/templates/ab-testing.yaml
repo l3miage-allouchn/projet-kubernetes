@@ -1,0 +1,50 @@
+{{- if and .Values.ingress.enabled .Values.abTesting.enabled }}
+# A/B testing : Traefik répartit les visiteurs entre les variantes selon leur poids.
+# Un Ingress standard ne peut viser qu'un Service : on utilise ici les CRD Traefik
+# (IngressRoute + TraefikService), qui remplacent l'Ingress pendant le test.
+apiVersion: traefik.io/v1alpha1
+kind: TraefikService
+metadata:
+  name: {{ include "tomtroc.fullname" . }}-ab
+  labels:
+    app.kubernetes.io/name: tomtroc
+    {{- include "tomtroc.commonLabels" . | nindent 4 }}
+spec:
+  weighted:
+    services:
+      - name: {{ include "tomtroc.fullname" . }}
+        port: 80
+        weight: {{ .Values.abTesting.weights.a }}
+      - name: {{ include "tomtroc.fullname" . }}-b
+        port: 80
+        weight: {{ .Values.abTesting.weights.b }}
+    # le cookie retient la variante tirée au sort : un visiteur voit toujours la même
+    # (sinon le test ne mesure rien, et l'interface changerait d'une page à l'autre)
+    sticky:
+      cookie:
+        name: {{ .Values.abTesting.cookieName }}
+        secure: true
+        httpOnly: true
+        sameSite: lax
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ include "tomtroc.fullname" . }}
+  labels:
+    app.kubernetes.io/name: tomtroc
+    {{- include "tomtroc.commonLabels" . | nindent 4 }}
+spec:
+  entryPoints:
+    - {{ .Values.ingress.entrypoint }}
+  routes:
+    - match: Host(`{{ .Values.ingress.host }}`)
+      kind: Rule
+      services:
+        - name: {{ include "tomtroc.fullname" . }}-ab
+          kind: TraefikService
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    secretName: {{ include "tomtroc.fullname" . }}-tls
+  {{- end }}
+{{- end }}

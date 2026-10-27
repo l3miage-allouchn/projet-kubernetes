@@ -62,6 +62,23 @@ ingress:
     duration: 2160h # 90 jours
     renewBefore: 360h # 15 jours
 
+# --- A/B testing --------------------------------------------------------------------
+# Deux versions en même temps : A (image.tag) et B (abTesting.variantB.tag). Traefik
+# envoie chaque nouveau visiteur vers l'une ou l'autre selon les poids, puis un cookie
+# le garde sur la même variante. Remplace l'Ingress par une IngressRoute Traefik.
+
+abTesting:
+  enabled: false
+  variantB:
+    tag: "1.1.0"
+    # nombre de pods fixe pour B (pas de HPA)
+    replicaCount: 1
+  # répartition des nouveaux visiteurs (proportions, pas forcément sur 100)
+  weights:
+    a: 80
+    b: 20
+  cookieName: tomtroc_variant
+
 # --- Sessions (Redis) ---------------------------------------------------------------
 
 redis:

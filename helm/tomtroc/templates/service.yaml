@@ -1,13 +1,22 @@
+{{- /* Un Service par variante (voir deployment.yaml) */ -}}
+{{- $variants := list (dict "name" (include "tomtroc.fullname" .) "app" "tomtroc") }}
+{{- if .Values.abTesting.enabled }}
+{{- $variants = append $variants (dict "name" (printf "%s-b" (include "tomtroc.fullname" .)) "app" "tomtroc-b") }}
+{{- end }}
+{{- range $v := $variants }}
+---
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "tomtroc.fullname" . }}
+  name: {{ $v.name }}
   labels:
-    {{- include "tomtroc.labels" . | nindent 4 }}
+    app.kubernetes.io/name: {{ $v.app }}
+    {{- include "tomtroc.commonLabels" $ | nindent 4 }}
 spec:
   selector:
-    {{- include "tomtroc.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/name: {{ $v.app }}
   ports:
     - name: http
       port: 80
       targetPort: http
+{{- end }}

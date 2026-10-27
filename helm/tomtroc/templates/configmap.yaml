@@ -16,3 +16,5 @@ data:
   SESSION_SAVE_HANDLER: files
   SESSION_SAVE_PATH: /tmp
   {{- end }}
+  # site en HTTPS : le cookie de session n'est jamais envoyé en HTTP
+  SESSION_COOKIE_SECURE: {{ if and .Values.ingress.enabled .Values.ingress.tls.enabled }}"1"{{ else }}"0"{{ end }}
