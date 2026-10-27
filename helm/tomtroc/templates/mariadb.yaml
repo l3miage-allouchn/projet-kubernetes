@@ -51,3 +51,15 @@ spec:
 
   resources:
     {{- toYaml .Values.mariadb.resources | nindent 4 }}
+
+  {{- if .Values.mariadb.metrics.enabled }}
+  # exporter de métriques (Deployment séparé) + ServiceMonitor pour Prometheus
+  metrics:
+    enabled: true
+    exporter:
+      resources:
+        {{- toYaml .Values.mariadb.metrics.resources | nindent 8 }}
+    serviceMonitor:
+      enabled: true
+      interval: 30s
+  {{- end }}

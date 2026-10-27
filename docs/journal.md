@@ -759,3 +759,110 @@ kubectl -n tomtroc get ingressroute,traefikservice
 
 `curl -I` (requête `HEAD`) renvoie 404 : le routeur de TomTroc ne déclare que `GET` et
 `POST`. Ce n'est pas un problème d'infrastructure ; les tests utilisent `GET`.
+
+---
+
+## Étape 8 — Supervision : kube-prometheus-stack, Grafana via Traefik
+
+Fichiers : `infra/values/kube-prometheus-stack.yaml`, `infra/monitoring/install.sh`,
+métriques ajoutées dans `infra/values/traefik.yaml` et la chart (`mariadb.metrics`).
+
+```bash
+./infra/monitoring/install.sh
+helm upgrade traefik traefik/traefik --version 42.1.3 -n traefik -f infra/values/traefik.yaml
+helm upgrade tomtroc helm/tomtroc -n tomtroc -f helm/tomtroc/values-prod.yaml -f helm/tomtroc/values-ab.yaml
+```
+
+Avant l'installation, l'environnement de dev a été désinstallé (`helm uninstall` puis
+suppression du namespace `tomtroc-dev`) pour libérer de la mémoire.
+
+### Composants (chart 92.14.0, namespace `monitoring`)
+
+| Composant | Rôle | Réglage |
+|---|---|---|
+| Prometheus | collecte et stocke les métriques | 1 réplica, collecte toutes les 30 s, 2 jours / 1 Go max, PVC `local-path` 2 Gi, limite 768Mi |
+| Grafana | graphiques | https://grafana.localhost, mot de passe dans le Secret `grafana-admin` |
+| prometheus-operator | transforme les ServiceMonitor en configuration Prometheus | limite 128Mi |
+| node-exporter | métriques des nœuds (DaemonSet, 3 pods) | limite 48Mi |
+| kube-state-metrics | état des objets Kubernetes | limite 96Mi |
+| Alertmanager | envoi d'alertes | **désactivé** (non demandé, économise de la mémoire) |
+
+etcd, scheduler, controller-manager et kube-proxy sont désactivés : kind n'expose pas
+leurs métriques, ils apparaîtraient toujours en erreur (`DOWN`).
+
+`serviceMonitorSelectorNilUsesHelmValues: false` : sans cette option, Prometheus ne
+prend que les ServiceMonitor de sa propre release, et ignorerait ceux de Traefik et de
+MariaDB.
+
+### Grafana via Traefik
+
+Ingress `grafana.localhost` avec l'annotation `cert-manager.io/cluster-issuer: lab-ca` :
+cert-manager crée lui-même le `Certificate` (`grafana-tls`). C'est l'autre méthode que
+l'objet `Certificate` écrit à la main pour TomTroc. La même CA du labo signe les deux.
+
+```bash
+kubectl -n monitoring get secret grafana-admin -o jsonpath='{.data.admin-password}' | base64 -d
+```
+
+### Métriques ajoutées
+
+- **Traefik** : Service `traefik-metrics` + ServiceMonitor. Requêtes, codes de réponse et
+  durées **par service**, donc par variante A/B ; Flagger les utilisera à l'étape 9.
+- **MariaDB** : `metrics.enabled` dans l'objet `MariaDB` ; l'opérateur crée un exporter
+  (Deployment séparé `mariadb-galera-metrics`, les pods Galera ne redémarrent pas) et
+  un ServiceMonitor.
+- L'application PHP n'expose pas de métriques ; celles de Traefik donnent la vue
+  « utilisateur » (débit, erreurs, temps de réponse).
+
+### Tableaux de bord
+
+Ceux de la chart (nœuds, pods, namespaces...) et trois importés de grafana.com dans le
+dossier « TomTroc » :
+
+| ID | Tableau |
+|---|---|
+| 17346 | Traefik Official Standalone Dashboard |
+| 7362 | MySQL Overview (Percona) |
+| 13106 | Galera/MariaDB - Overview |
+
+### Problèmes rencontrés
+
+1. **Cibles Traefik et MariaDB absentes** juste après l'installation : l'opérateur
+   recharge la configuration de Prometheus avec un délai. Une minute plus tard : toutes
+   les cibles `up` (24).
+2. **Le tableau Traefik ne séparait pas les services** : Prometheus ajoute un label
+   `service` (le Service collecté, `traefik-metrics`) qui entre en conflit avec le label
+   `service` de Traefik ; celui de Traefik est renommé `exported_service`, et la
+   variable du tableau ne trouvait que `traefik-metrics`. Correction :
+   `honorLabels: true` sur le ServiceMonitor de Traefik.
+3. **Source de données « Alertmanager »** présente alors qu'Alertmanager est désactivé :
+   `grafana.sidecar.datasources.alertmanager.enabled: false`, puis redémarrage de
+   Grafana (il ne retire les anciennes sources qu'au démarrage ; sans disque, rien
+   n'est perdu).
+4. **Les pods de l'appli redémarraient à chaque changement de version de la chart** :
+   `checksum/config` portait sur toute la ConfigMap, y compris le label
+   `helm.sh/chart`. Il ne porte plus que sur `.data` (chart 0.3.0).
+
+### Vérifications
+
+```bash
+kubectl -n monitoring port-forward svc/kube-prometheus-stack-prometheus 9090:9090
+# http://localhost:9090/targets
+```
+
+| Requête PromQL | Résultat |
+|---|---|
+| `sum by (exported_service) (increase(traefik_service_requests_total{exported_service=~"tomtroc-.*"}[3m]))` | A : 395, B : 99 (≈ 80/20) |
+| `histogram_quantile(0.95, sum by (le, exported_service) (rate(traefik_service_request_duration_seconds_bucket[3m])))` | p95 ≈ 95 ms pour A et B |
+| `mysql_global_status_wsrep_cluster_size` | 3 sur les 3 nœuds |
+
+Grafana : HTTP → 301 HTTPS, sans mot de passe → 401, certificat vérifié, 3 tableaux dans
+le dossier TomTroc, une seule source de données (Prometheus).
+
+### Mémoire
+
+| | Mémoire |
+|---|---|
+| Prometheus | ~363 Mi |
+| Grafana (3 conteneurs) | ~399 Mi |
+| Nœuds au total | ~5,1 Gi sur 7,75 Gi |

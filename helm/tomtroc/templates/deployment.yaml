@@ -37,8 +37,9 @@ spec:
       labels:
         app.kubernetes.io/name: {{ $v.app }}
       annotations:
-        # change quand la ConfigMap change : les pods sont alors recréés pour la relire
-        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") $ | sha256sum }}
+        # change quand les données de la ConfigMap changent (pas ses labels) : les pods
+        # sont alors recréés pour relire les variables
+        checksum/config: {{ (include (print $.Template.BasePath "/configmap.yaml") $ | fromYaml).data | toYaml | sha256sum }}
     spec:
       serviceAccountName: {{ include "tomtroc.fullname" $ }}
       automountServiceAccountToken: false

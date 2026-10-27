@@ -144,6 +144,16 @@ mariadb:
     limits:
       memory: 512Mi
 
+  # métriques MariaDB/Galera pour Prometheus (nécessite kube-prometheus-stack, étape 8)
+  metrics:
+    enabled: true
+    resources:
+      requests:
+        cpu: 10m
+        memory: 24Mi
+      limits:
+        memory: 64Mi
+
   # import de files/tomtroc.sql (copie de app/sql/tomtroc.sql) par un SqlJob, une seule
   # fois. Attention : le script commence par des DROP TABLE.
   initSql:

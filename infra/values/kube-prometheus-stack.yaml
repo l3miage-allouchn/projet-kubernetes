@@ -1,0 +1,145 @@
+# kube-prometheus-stack (chart prometheus-community/kube-prometheus-stack) :
+# Prometheus (collecte et stocke les métriques), Grafana (graphiques), l'opérateur
+# Prometheus (ServiceMonitor...), node-exporter (métriques des nœuds) et
+# kube-state-metrics (état des objets Kubernetes).
+# Version allégée : le Mac a peu de mémoire.
+
+# pas d'Alertmanager : le projet ne demande pas d'envoi d'alertes
+alertmanager:
+  enabled: false
+
+# composants du control-plane dont kind n'expose pas les métriques : sans cela ils
+# apparaîtraient toujours en erreur (DOWN) dans Prometheus
+kubeEtcd:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeProxy:
+  enabled: false
+defaultRules:
+  rules:
+    etcd: false
+    kubeSchedulerAlerting: false
+    kubeSchedulerRecording: false
+    kubeControllerManager: false
+    kubeProxy: false
+
+prometheus:
+  prometheusSpec:
+    # Prometheus prend en compte les ServiceMonitor de toutes les charts (Traefik,
+    # MariaDB...), pas seulement ceux de cette release
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    probeSelectorNilUsesHelmValues: false
+
+    scrapeInterval: 30s
+    # 2 jours de données au plus, et 1 Go au plus
+    retention: 2d
+    retentionSize: 1GB
+
+    # les données survivent à un redémarrage de Prometheus
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: local-path
+          accessModes: [ReadWriteOnce]
+          resources:
+            requests:
+              storage: 2Gi
+
+    resources:
+      requests:
+        cpu: 100m
+        memory: 384Mi
+      limits:
+        memory: 768Mi
+
+prometheusOperator:
+  resources:
+    requests:
+      cpu: 20m
+      memory: 48Mi
+    limits:
+      memory: 128Mi
+
+kube-state-metrics:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 96Mi
+
+prometheus-node-exporter:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 16Mi
+    limits:
+      memory: 48Mi
+
+grafana:
+  # mot de passe admin dans le Secret "grafana-admin", créé par infra/monitoring/install.sh
+  # (jamais dans git)
+  admin:
+    existingSecret: grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
+
+  # https://grafana.localhost par Traefik. L'annotation cert-manager.io/cluster-issuer
+  # demande à cert-manager de créer lui-même le certificat (autre méthode que l'objet
+  # Certificate écrit à la main pour TomTroc)
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    annotations:
+      traefik.ingress.kubernetes.io/router.entrypoints: websecure
+      cert-manager.io/cluster-issuer: lab-ca
+    hosts:
+      - grafana.localhost
+    tls:
+      - secretName: grafana-tls
+        hosts:
+          - grafana.localhost
+
+  # pas de source de données Alertmanager, puisqu'il est désactivé
+  sidecar:
+    datasources:
+      alertmanager:
+        enabled: false
+
+  # tableaux de bord téléchargés depuis grafana.com au démarrage
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: tomtroc
+          folder: TomTroc
+          type: file
+          disableDeletion: true
+          options:
+            path: /var/lib/grafana/dashboards/tomtroc
+  dashboards:
+    tomtroc:
+      traefik:
+        gnetId: 17346 # Traefik Official Standalone Dashboard
+        revision: 9
+        datasource: Prometheus
+      mysql-overview:
+        gnetId: 7362 # MySQL Overview (Percona)
+        revision: 5
+        datasource: Prometheus
+      galera:
+        gnetId: 13106 # Galera/MariaDB - Overview
+        revision: 3
+        datasource: Prometheus
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi

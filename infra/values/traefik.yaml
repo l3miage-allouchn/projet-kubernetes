@@ -40,6 +40,20 @@ ingressRoute:
 accessLog:
   enabled: true
 
+# métriques Prometheus (requêtes, codes, durées par service) : un Service dédié et un
+# ServiceMonitor pour que Prometheus (étape 8) les collecte. Flagger s'en sert aussi
+# pour juger un canary (étape 9).
+metrics:
+  prometheus:
+    service:
+      enabled: true
+    serviceMonitor:
+      enabled: true
+      # Prometheus ajoute un label "service" (le Service collecté, traefik-metrics) qui
+      # écrase celui de Traefik (le service visé : tomtroc, tomtroc-b...). honorLabels
+      # garde ceux de Traefik : le tableau de bord sépare alors bien A et B.
+      honorLabels: true
+
 resources:
   requests:
     cpu: 50m
